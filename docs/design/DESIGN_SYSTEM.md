@@ -1247,6 +1247,20 @@ Web: `web/src/sharing/`, `web/public-share/`; Android: `AgentShareSheet`; server
 
 ### 4.10 Web workspace selection and management
 
+The optional text editor in an Agent's Files panel reuses `Button`, `Dialog`, `ErrorNotice`, the inset code surface and
+the existing file toolbar. It is shown only after `file_text_edit` negotiation and for a complete small UTF-8 file.
+Edit is deliberate; Save is the only primary action, Done preserves a dirty draft, and Discard asks for confirmation.
+Save failures and version conflicts retain the draft with a plain-language explanation. Drafts stay in browser memory,
+separated by credential, assistant, computer and file; credential changes clear them. Refresh warns about unsaved drafts.
+This adds a secondary-page control, not a primary destination, style, model setting or full language-server IDE.
+Buttons wrap as a group at narrow widths, not within a label, and the editor has a spoken label and keyboard Save.
+
+The optional Task supervisor page uses the existing extension drawer and declarative section, row, filter and button
+renderer. It is not a primary destination or a second chat surface. Read-only is the default; enabled controls use
+the standard action confirmation with consequences stated in plain language. An unavailable supervisor shows a
+retryable notice and stops automatic refresh. Ticket titles are plain text, long labels wrap, and source-account or
+environment details are not displayed. Locale and theme come from the existing extension renderer.
+
 In Agents' repository tree, the workspace title and its leading disclosure button toggle the same remembered fold at every depth. A title also selects the exact workspace, including an empty one; opening an Agent uses that Agent’s own row, never the workspace title or a descendant chosen by proximity. A visible overflow button offers the same actions as the context menu, including on touch devices. The desktop sidebar and phone Agents page share these rows and actions rather than adding a management destination.
 
 The existing `Dialog`, `Button`, `Menu`, `Collapse` and status components carry workspace management. Creation shows its source and starting branch, keeps additional choices in the advanced group, and starts no Agent automatically. An optional Agent start names the exact existing workspace. Creation acknowledgment shows the actual resulting path and branch; an interrupted request offers reconciliation of that same intent.

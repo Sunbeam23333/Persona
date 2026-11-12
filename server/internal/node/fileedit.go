@@ -453,6 +453,8 @@ func (n *Node) restoreOne(files, info string, t trashID) error {
 }
 
 func (n *Node) fileEditCall(method string, params json.RawMessage) (any, error) {
+	fileMutationMu.Lock()
+	defer fileMutationMu.Unlock()
 	var p struct {
 		Path     string   `json:"path"`
 		Paths    []string `json:"paths"`

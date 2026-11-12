@@ -1,0 +1,9 @@
+{
+  "name": "任务监督器",
+  "description": "查看一台电脑上已有的 DSH Super-agent，默认禁止控制操作。",
+  "configuration": {
+    "machines": {"title": "监督器电脑", "description": "选择已经运行 DSH Super-agent 和 Persona Link 的电脑。"},
+    "port": {"title": "本地监督器端口"},
+    "allow_control": {"title": "允许任务控制", "description": "允许重试、停止、暂停和恢复。每次操作仍需确认。", "confirm": "允许此扩展重试或停止工单，以及暂停或恢复监督器？"}
+  }
+}

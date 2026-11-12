@@ -1,0 +1,21 @@
+{
+  "edit": "Edit text",
+  "save": "Save",
+  "done": "Done",
+  "discard": "Discard draft",
+  "cancel": "Cancel",
+  "saving": "Saving…",
+  "saved": "File saved",
+  "unsaved": "Unsaved changes",
+  "plain_text": "Plain-text editor",
+  "content": "File contents",
+  "retired": "The account or assistant changed. Reopen the file to edit it.",
+  "draft_hint": "Drafts stay in this tab when you leave. Save before reloading or signing out. Text files up to 1 MiB only.",
+  "draft_kept": "Unsaved draft kept. Reopen this file and choose Edit text to continue.",
+  "conflict": "The file changed on the computer",
+  "save_failed": "Couldn't save the file",
+  "failure_help": "Your draft is kept. Choose Done to read the current file. Copy your draft before discarding it; saving is rejected when a changed file revision is detected.",
+  "invalid": "Use valid text without NUL characters, up to 1 MiB.",
+  "discard_title": "Discard this draft?",
+  "discard_detail": "Your unsaved edits will be lost. The file on the computer won't change."
+}

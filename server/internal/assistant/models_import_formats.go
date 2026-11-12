@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/nwverse/persona/server/internal/aiwire"
 	"github.com/nwverse/persona/server/internal/lazyre"
 	"github.com/nwverse/persona/server/internal/proto"
 	"github.com/nwverse/persona/server/internal/shellcmd"
@@ -595,6 +596,10 @@ func curlDraft(c curlRequest) (pasteDraft, string) {
 	if i := slices.IndexFunc(curlEndpoints, func(e curlEndpoint) bool { return strings.HasSuffix(path, e.path) }); i >= 0 {
 		e := curlEndpoints[i]
 		d.Provider = endpointProvider(e.api, root+strings.TrimSuffix(path, e.path))
+		// Keep an exact OpenAI-compatible URL when a conventional base would insert a version segment.
+		if e.api != "messages" && aiwire.Endpoint(d.Provider.BaseURL, strings.TrimPrefix(e.path, "/")) != root+path {
+			d.Provider.BaseURL = root + path
+		}
 	} else {
 		d.Provider = endpointProvider("messages", root+path)
 		addNote(&d.Notes, pasteNote{Code: noteCurlPath, Name: u.Path})

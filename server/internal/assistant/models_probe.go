@@ -1,7 +1,6 @@
 package assistant
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nwverse/persona/server/internal/ai"
+	"github.com/nwverse/persona/server/internal/aiwire"
 	"github.com/nwverse/persona/server/internal/apierr"
 	"github.com/nwverse/persona/server/internal/i18n"
 	"github.com/nwverse/persona/server/internal/proto"
@@ -191,16 +191,13 @@ func (s *Service) probeTarget(ctx context.Context, in probeInput) (probeTarget, 
 	return t, nil
 }
 
-// endpoint is <base>/v1/<path>, a base already ending in /v1 not doubled. A Messages base is read as the node hands it
+// endpoint shares direct API URL resolution with real calls. A Messages base is read as the node hands it
 // to Claude Code (proto.MessagesBaseURL), so a test passes for the address Agents will call.
 func (t probeTarget) endpoint(path string) string {
 	if messagesAPI(t.api) {
 		return proto.MessagesBaseURL(t.base) + "/v1/" + path
 	}
-	if strings.HasSuffix(t.base, "/v1") {
-		return t.base + "/" + path
-	}
-	return t.base + "/v1/" + path
+	return aiwire.Endpoint(t.base, path)
 }
 
 // modelsEndpoint keeps discovery separate from the inference protocol. DeepSeek documents /models at the
@@ -554,65 +551,8 @@ func responsesProbeCompleted(body io.Reader) bool {
 
 // chatProbeCompleted follows the first choice to a terminal event, including errors after its finish reason.
 func chatProbeCompleted(body io.Reader) bool {
-	sc := bufio.NewScanner(io.LimitReader(body, 8<<20))
-	sc.Buffer(make([]byte, 64<<10), 4<<20)
-	finished, hasText := false, false
-	var lines []string
-	// An SSE event can span several data lines. A terminal result returns stop=true.
-	consume := func() (stop, success bool) {
-		if len(lines) == 0 {
-			return false, false
-		}
-		data := strings.Join(lines, "\n")
-		lines = nil
-		if strings.TrimSpace(data) == "[DONE]" {
-			return true, hasText
-		}
-		var event struct {
-			Error   json.RawMessage `json:"error"`
-			Choices []struct {
-				Index        int    `json:"index"`
-				FinishReason string `json:"finish_reason"`
-				Delta        struct {
-					Content string `json:"content"`
-					Refusal string `json:"refusal"`
-				} `json:"delta"`
-			} `json:"choices"`
-		}
-		if json.Unmarshal([]byte(data), &event) != nil || len(event.Error) > 0 && string(event.Error) != "null" {
-			return true, false
-		}
-		for _, choice := range event.Choices {
-			if choice.Index != 0 {
-				continue
-			}
-			if choice.FinishReason == "content_filter" || choice.Delta.Refusal != "" {
-				return true, false
-			}
-			hasText = hasText || strings.TrimSpace(choice.Delta.Content) != ""
-			finished = finished || choice.FinishReason != ""
-		}
-		return false, false
-	}
-	for sc.Scan() {
-		line := sc.Text()
-		if line == "" {
-			if stop, success := consume(); stop {
-				return success
-			}
-			continue
-		}
-		if data, ok := strings.CutPrefix(line, "data:"); ok {
-			lines = append(lines, strings.TrimPrefix(data, " "))
-		}
-	}
-	if sc.Err() != nil {
-		return false
-	}
-	if stop, success := consume(); stop {
-		return success
-	}
-	return hasText && finished
+	reply, err := ai.ReadChatCompletions(io.LimitReader(body, (8<<20)+1))
+	return err == nil && strings.TrimSpace(reply.Text) != ""
 }
 
 // providerDiscover reads the provider's model-list endpoint, its models filled in from the catalog.

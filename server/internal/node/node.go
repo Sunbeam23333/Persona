@@ -74,6 +74,8 @@ type Node struct {
 	doctorAt func() DoctorOptions
 	// fileReadDeps replaces file.read's filesystem operations in tests.
 	fileReadDeps *fileReadDependencies
+	// fileTextBeforeCommit exercises changes between text-edit validation and commit in tests.
+	fileTextBeforeCommit func()
 
 	home         string
 	sessionScope *nodeSessionScope
@@ -1608,6 +1610,8 @@ func (n *Node) handle(ctx context.Context, method string, params json.RawMessage
 		return n.uploadCall(method, params)
 	case "file.rename", "file.move", "file.trash", "file.restore":
 		return n.fileEditCall(method, params)
+	case "file.text":
+		return n.fileTextCall(params)
 	case "health.reports.list", "health.reports.delete":
 		return n.healthReportsCall(method, params)
 	case "file.chunk":

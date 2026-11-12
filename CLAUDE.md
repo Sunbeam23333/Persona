@@ -281,6 +281,7 @@ Every maintained doc under `docs/` (lessons excluded) must be listed here.
 | Area | Docs |
 | --- | --- |
 | Super rules | `docs/SUPER_RULES.md` highest-priority rules and prior administrator approval for changes |
+| Unified workbench fork | `docs/integrations/unified-workbench.md` architecture, gateway boundaries, external IDE/runtime setup and acceptance |
 | Start | `docs/README.md` navigation · `docs/operations/getting-started.md` setup without a terminal · `docs/assistant/onboarding.md` new-user onboarding · `docs/operations/config.md` config.json and hub.json · `docs/operations/collaboration.md` claims, PRs, templates · `docs/protocol/i18n.md` localization |
 | Architecture and protocol | `docs/server/architecture.md` · `docs/protocol/protocol.md` HTTP / WebSocket API and node RPC · `docs/protocol/file-transfer.md` receive folder and computer to computer transfers · `docs/protocol/agent-states.md` · `docs/protocol/multi-hub.md` one device, several hubs · `docs/protocol/connector-protocol.md` · `docs/protocol/rolling-upgrade-compatibility.md` old / new name interop · `docs/operations/rename.md` naming contract · `docs/operations/persona-cutover.md` approval-gated naming cutover tool |
 | Server | `docs/server/server.md` modes and operations · `docs/server/mesh.md` linked hubs · `docs/server/machines.md` monitoring · `docs/server/usage-windows.md` subscription usage · `docs/server/launcher-health.md` · `docs/server/agent-sharing.md` trusted ownership and public sharing contract · `docs/server/agent-sandbox.md` macOS agent sandbox |

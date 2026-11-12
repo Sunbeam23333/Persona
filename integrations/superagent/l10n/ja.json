@@ -1,0 +1,9 @@
+{
+  "name": "タスク監督",
+  "description": "1台のコンピューターで稼働中の DSH Super-agent を確認します。操作は初期状態で無効です。",
+  "configuration": {
+    "machines": {"title": "監督サービスのコンピューター", "description": "DSH Super-agent と Persona Link が稼働中のコンピューターを選択してください。"},
+    "port": {"title": "監督サービスのローカルポート"},
+    "allow_control": {"title": "タスク操作を許可", "description": "再試行、停止、一時停止、再開を許可します。毎回確認が必要です。", "confirm": "この拡張機能にチケットの再試行や停止、監督サービスの一時停止や再開を許可しますか？"}
+  }
+}

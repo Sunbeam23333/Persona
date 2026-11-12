@@ -9,6 +9,10 @@
 
 [English](README.md) · 简体中文
 
+> **统一工作台集成版：** Persona 底座＋网页开发工作台＋外部 IDE／Agent 连接器。
+> 请先阅读[集成与配置指南](docs/integrations/unified-workbench.md)。
+> 下方保留上游功能介绍；连接器实现不等于已完成本机安装、账号登录和真实服务验收。
+
 ### 一个 SuperAgent，搞定你的所有事。<br>懂你的上下文，指挥你的 Agent，走到哪儿跟到哪儿。
 
 **扩展市场：[Persona Extensions](https://github.com/nwverse/persona-extensions)。** 接入数据源，给助手加工具和技能，给 App 加界面。[一行就能加上](#扩展)

@@ -98,6 +98,9 @@ func (n *Node) readFile(path, cwd string, offset int64, stream bool) (*FileConte
 		size = n.fileReadDeps.size(st)
 	}
 	fc := &FileContent{Path: path, Name: filepath.Base(path), Size: size}
+	if st.Mode().IsRegular() {
+		fc.Revision = fileRevision(st)
+	}
 	if st.IsDir() {
 		fc.IsDir = true
 		ents, err := os.ReadDir(real)

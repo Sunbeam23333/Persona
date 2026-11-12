@@ -9,6 +9,10 @@
 
 English · [简体中文](README.zh-CN.md)
 
+> **Unified workbench fork:** Persona base + web development workspace + external IDE/runtime bridges.
+> Start with the [integration and setup guide](docs/integrations/unified-workbench.md).
+> Upstream features below are retained; bridge support and live account setup are separate.
+
 ### One SuperAgent for everything you do.<br>It knows your world, runs your Agents, and goes wherever you go.
 
 **Extension market: [Persona Extensions](https://github.com/nwverse/persona-extensions).** Connect data sources, add tools and skills to the assistant, and add views to the apps. [Add it in one line](#extensions)

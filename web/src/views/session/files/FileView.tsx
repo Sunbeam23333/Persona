@@ -1,8 +1,11 @@
 // The file viewer (docs/apple/ios.md "File viewer"): one file or folder on a machine, read through the hub. Markdown
 // rendered (or its source), code with line numbers and a little coloring, JSON indented, images, PDFs, folders.
 // Text files come a page (2 MB) at a time; only the lines on screen are rendered, so big files stay smooth.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
-import { api, enc, errorText, fileDownloadURL, fileThumbURL, isAbort } from "../../../lib/api";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
+import { api, credentialOwner, enc, errorText, fileDownloadURL, fileThumbURL, isAbort, subscribeCredentialOwner } from "../../../lib/api";
+import { editableText, FILE_TEXT_EDIT_FEATURE } from "../../../lib/file-edit";
+import { onManagerChoice, useShownManager } from "../../../lib/manager-choice";
+import { hubHas, useStore } from "../../../lib/store";
 import { delimitedSheet, type Sheet } from "../../../lib/sheets";
 import type { SheetReply, SheetRequest } from "../../../lib/sheets.worker";
 import {
@@ -45,6 +48,7 @@ import { MediaPlayer } from "../../../ui/Media";
 import { NotebookView } from "./NotebookView";
 import { OfficeView } from "./OfficeView";
 import { SheetView } from "./SheetView";
+import { TextEditor } from "./TextEditor";
 import { formatNumber, t } from "../../../i18n";
 
 const LH = 20; // px per code line
@@ -116,14 +120,17 @@ export interface FileDoc {
 }
 
 export function useFileDoc(mid: string, path: string, cwd?: string): FileDoc {
+  const owner = useSyncExternalStore(subscribeCredentialOwner, credentialOwner);
+  const manager = useShownManager();
   const [, bump] = useReducer((x: number) => x + 1, 0);
   const [reloads, setReloads] = useState(0);
+  useEffect(() => onManagerChoice(() => setReloads((n) => n + 1)), []);
   // Each identity/reload owns its pages and callbacks. An old all()/more() must never borrow a new document.
   const s = useMemo(() => ({
     mid, path, cwd, reloads,
     gen: 0, active: true, file: null as FileContent | null, pages: [] as string[], next: 0,
     pending: null as Promise<boolean> | null, complete: false, revision: "", changed: false, error: "", pageError: "",
-  }), [mid, path, cwd, reloads]);
+  }), [mid, path, cwd, reloads, owner, manager]);
 
   useEffect(() => {
     const gen = ++s.gen;
@@ -261,6 +268,13 @@ export function FileView({
   const kind = f ? viewKind(f) : null;
   const [mode, setMode] = useState<Mode>(line ? "source" : "rendered");
   const [saving, setSaving] = useState(false);
+  const owner = useSyncExternalStore(subscribeCredentialOwner, credentialOwner);
+  const manager = useShownManager();
+  const features = useStore((s) => s.features);
+  const editKey = JSON.stringify([owner, manager, mid, cwd, path]);
+  const [editing, setEditing] = useState<string | null>(null);
+  const isEditing = editing === editKey && editableText(f);
+  const canEditText = hubHas(features, FILE_TEXT_EDIT_FEATURE) && editableText(f) && !doc.changed;
 
   // JSON is indented from the whole text: read the rest first (as the app does), up to a cap.
   const cap = kind === "notebook" ? MAX_NOTEBOOK : kind === "html" ? MAX_HTML : MAX_JSON;
@@ -332,6 +346,7 @@ export function FileView({
   const where = kind === "directory" ? shortPath(full) : shortPath(dirName(full)) || full; // the name is the title
   const actions = (
     <>
+      {canEditText && !isEditing && <Button onClick={() => setEditing(editKey)}>{t("session-files-texteditor.edit")}</Button>}
       {kind === "markdown" && <Segmented label={t("session-files-fileview.view_mode")} value={mode} onChange={setMode} options={[["rendered", t("session-files-fileview.mode_preview")], ["source", t("session-files-fileview.mode_source")]]} />}
       {kind === "json" && json?.pretty != null && <Segmented label={t("session-files-fileview.view_mode")} value={mode} onChange={setMode} options={[["rendered", t("session-files-fileview.mode_formatted")], ["source", t("session-files-fileview.mode_raw")]]} />}
       {kind === "image" && typeof f?.text === "string" && <Segmented label={t("session-files-fileview.view_mode")} value={mode} onChange={setMode} options={[["rendered", t("session-files-fileview.mode_image")], ["source", t("session-files-fileview.mode_source")]]} />}
@@ -344,7 +359,10 @@ export function FileView({
   );
 
   let body: React.ReactNode;
-  if (doc.changed) {
+  if (isEditing && editableText(f)) {
+    body = <TextEditor key={editKey} target={{ owner, manager, mid, cwd: cwd ?? "", path: f.path }} original={f.text} revision={f.revision}
+      onDone={() => { setEditing(null); doc.reload(); }} onSaved={() => toast(t("session-files-texteditor.saved"))} />;
+  } else if (doc.changed) {
     body = <Empty icon="info" title={t("session-files-fileview.file_changed")} detail={t("session-files-fileview.file_changed_detail")}
       action={<Button icon="retry" onClick={doc.reload}>{t("session-files-fileview.reload")}</Button>} />;
   } else if (doc.error) {

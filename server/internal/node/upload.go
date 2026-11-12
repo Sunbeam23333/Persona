@@ -600,6 +600,8 @@ func (n *Node) uploadCall(method string, params json.RawMessage) (any, error) {
 		}
 		return map[string]any{"received": got}, nil
 	case "file.upload.end":
+		fileMutationMu.Lock()
+		defer fileMutationMu.Unlock()
 		path, size, err := n.ups.end(p.UploadID, time.Now())
 		if err != nil {
 			return nil, err

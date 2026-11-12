@@ -1,0 +1,47 @@
+{
+  "manifest_version": 1,
+  "id": "dsh-supervisor",
+  "name": "Task supervisor",
+  "version": "0.1.0",
+  "description": "Inspect an existing DSH Super-agent on one computer. Controls are off by default.",
+  "engines": {"extension_protocol": 1, "plugin_protocol": 1},
+  "runtime": {
+    "command": {
+      "darwin-arm64": "bin/dsh-supervisor-darwin-arm64",
+      "darwin-amd64": "bin/dsh-supervisor-darwin-amd64",
+      "linux-arm64": "bin/dsh-supervisor-linux-arm64",
+      "linux-amd64": "bin/dsh-supervisor-linux-amd64"
+    }
+  },
+  "node": {
+    "command": {
+      "darwin-arm64": "bin/dsh-supervisor-darwin-arm64",
+      "darwin-amd64": "bin/dsh-supervisor-darwin-amd64",
+      "linux-arm64": "bin/dsh-supervisor-linux-arm64",
+      "linux-amd64": "bin/dsh-supervisor-linux-amd64"
+    },
+    "args": ["--node"],
+    "machines": "machines",
+    "keep_running": "lease",
+    "permissions": {"network": ["127.0.0.1"]}
+  },
+  "contributes": {
+    "ui": [{"id": "supervisor", "title": "Task supervisor", "placement": "nav_page", "icon": "list"}]
+  },
+  "configuration": {
+    "type": "object",
+    "properties": {
+      "machines": {
+        "type": "array", "title": "Supervisor computer", "default": [], "maxItems": 1,
+        "description": "Select the computer already running DSH Super-agent and Persona Link.",
+        "items": {"type": "string", "format": "machine", "x-os": ["darwin", "linux"]}
+      },
+      "port": {"type": "integer", "title": "Local supervisor port", "default": 3082, "minimum": 1, "maximum": 65535},
+      "allow_control": {
+        "type": "boolean", "title": "Allow task controls", "default": false,
+        "description": "Permit retry, stop, pause and resume. Every button still asks for confirmation.",
+        "x-confirm": "Allow this extension to retry or stop tickets and pause or resume the supervisor?"
+      }
+    }
+  }
+}

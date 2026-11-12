@@ -83,6 +83,8 @@ const (
 	// ModelHTTP: model.http, a direct-API model request an API connection sends through this computer
 	// (docs/assistant/model-config.md "Sending through a computer").
 	ModelHTTP = "model_http"
+	// FileTextEdit: file.text replaces an existing UTF-8 file only at its observed revision.
+	FileTextEdit = "file_text_edit"
 	// EngineSwitch: session.modes takes a launcher of the other engine (Claude Code ↔ Codex) for a running terminal
 	// Agent, kept as its pending switch (Session.pending_switch.agent); its next session.send with apply_switch starts
 	// that engine in the same terminal with a handoff summary, or resumes the conversation's earlier session of it, and
@@ -114,7 +116,7 @@ const (
 )
 
 // Announced is what a node built from this code announces.
-var Announced = []string{ShareProjection, CreationReceipt, PersonaContracts, ManagerUpdateInventory, Sessions, ModelConfiguration, AssistantConfigDir, NodeUpdate, Engines, MachineUID, HerdrServer, PluginNodeCall, Ultracode, HealthSpaces, Preview, SecretRun, Clipboard, SecretEnv, LauncherSwitch, ModelHTTP, EngineSwitch}
+var Announced = []string{ShareProjection, CreationReceipt, PersonaContracts, ManagerUpdateInventory, Sessions, ModelConfiguration, AssistantConfigDir, NodeUpdate, Engines, MachineUID, HerdrServer, PluginNodeCall, Ultracode, HealthSpaces, Preview, SecretRun, Clipboard, SecretEnv, LauncherSwitch, ModelHTTP, EngineSwitch, FileTextEdit}
 
 // ShareProjection is the bounded complete-source sharing projection, not light Items.
 const ShareProjection = "share_projection.v1"
