@@ -1,0 +1,802 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "manifest.schema.json",
+  "title": "Extension manifest",
+  "description": "persona-extension.json (read as persona-plugin.json before the rename, #1844) at the root of an extension's package. The hub reads it strictly: a field it does not know anywhere fails the install. Rules a schema cannot say (a gate file inside the package, ids unique across extensions, a name listed twice, what a version range admits) stay the hub's.",
+  "$ref": "#/$defs/Manifest",
+  "$defs": {
+    "ID": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"},
+    "Host": {
+      "description": "A host name, lowercase, no scheme, port or path; *. may start it.",
+      "type": "string", "maxLength": 253,
+      "pattern": "^(\\*\\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "ExactHost": {"description": "A host name, lowercase, no scheme, port, path or wildcard.", "type": "string", "maxLength": 253, "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"},
+    "NetworkEntry": {
+      "description": "A host name as Host, or config:<field> (config:<field>:http) for the address the user writes in configuration field <field> (format uri): https only unless :http.",
+      "type": "string", "maxLength": 253,
+      "pattern": "^((\\*\\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?|config:[a-z_][a-z0-9_]{0,63}(:http)?)$"
+    },
+    "ActivationEvent": {"type": "string", "enum": ["on_startup", "on_call", "on_http"]},
+    "VersionRange": {
+      "description": ">=X.Y.Z, <X.Y.Z, or both with spaces between; empty is any version.",
+      "type": "string",
+      "pattern": "^(\\s*(>=|<)(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\s+(>=|<)(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?)*\\s*)?$"
+    },
+    "Manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "manifest_version": {"type": "integer", "const": 1},
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 40, "pattern": "\\S"},
+        "version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"},
+        "description": {"type": "string"},
+        "publisher": {"type": "string"},
+        "homepage": {"type": "string",
+          "pattern": "^https://([A-Za-z0-9._~!$&'()*+,;=:%@-]*@)?[^\\x00-\\x20\\x7f/?#@\\\\^`{|}]+([/?#][^\\x00-\\x1f\\x7f]*)?$"},
+        "icon": {"type": "string", "const": "assets/icon.png", "description": "Source-only square PNG artwork: 256–4096 pixels, at most 2 MiB. Catalog entry icon carries this path; strip it from packaged and runtime manifests for compatibility."},
+        "tags": {
+          "description": "What the market shows and searches (docs \"Extension market\"): at most 16, each 1 to 24 characters. Packages and indexes carry the manifest without them (hubs before tags refuse an unknown field); the index entry carries them instead.",
+          "type": "array", "maxItems": 16, "items": {"type": "string", "minLength": 1, "maxLength": 24}
+        },
+        "engines": {"$ref": "#/$defs/Engines"},
+        "runtime": {"$ref": "#/$defs/Runtime"},
+        "node": {"$ref": "#/$defs/NodeRuntime"},
+        "activation_events": {"type": "array", "items": {"$ref": "#/$defs/ActivationEvent"}},
+        "contributes": {"$ref": "#/$defs/Contributes"},
+        "off_by_default": {"description": "Contributions (\"<point>/<id>\") that start switched off: at install, and at an upgrade the ones the version before did not have (docs \"Contribution switches\"). Not a connector or a channel bound to one (their switch is the connector's). Hubs before it refuse the manifest.", "type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9_.-]+/[a-z0-9][a-z0-9_-]*$"}},
+        "depends": {
+          "description": "Extensions it needs installed and on (docs \"Dependencies\"): while one is missing, off or too old it waits in needs_setup.",
+          "type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/Dependency"}
+        },
+        "exports": {"$ref": "#/$defs/Exports"},
+        "extension_pack": {
+          "description": "An extension pack (docs \"Extension packs\"): installing it installs these. A pack has no runtime and no contributes of its own.",
+          "type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/PackMember"}
+        },
+        "configuration": {"description": "The configuration's JSON Schema, in the subset every app draws as a form (docs \"Configuration: the form subset\")."},
+        "secrets": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/SecretSpec"}},
+        "settings_check": {"type": "boolean", "description": "The program checks a change of its settings or secrets before the hub saves it (settings.check)."},
+        "permissions": {"$ref": "#/$defs/Permissions"},
+        "tools": {
+          "description": "Command-line programs the hub installs into the extension's own directory and puts first on its PATH (docs \"Command-line programs (tools)\", #4507). Installing them is a permission. Hubs before them refuse the manifest.",
+          "type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/ToolSpec"}
+        },
+        "auth": {"$ref": "#/$defs/AuthSpec"},
+        "host_integrations": {
+          "description": "Configured host CLI integrations the program may use through a bounded, read-only typed RPC. IDs never name an executable; writes and arbitrary command lines are not part of this contract.",
+          "type": "array", "maxItems": 1, "items": {"$ref": "#/$defs/HostIntegrationSpec"}
+        }
+      },
+      "required": ["manifest_version", "id", "name", "version"],
+      "anyOf": [
+        {"not": {"anyOf": [{"required": ["runtime"]}, {"required": ["node"]}]}},
+        {"required": ["engines"], "properties": {"engines": {"anyOf": [{"required": ["extension_protocol"]}, {"required": ["plugin_protocol"]}]}}}
+      ]
+    },
+    "HostIntegrationSpec": {
+      "description": "A configured CLI integration, selected by a closed ID rather than by an extension-provided executable.",
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "enum": ["lark-cli"]},
+        "version": {"$ref": "#/$defs/VersionRange"}
+      },
+      "required": ["id", "version"]
+    },
+    "ToolSpec": {
+      "description": "One command-line program. Exactly one of archive and npm.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,31}$", "description": "The command put on PATH."},
+        "title": {"type": "string"},
+        "version": {"type": "string", "minLength": 1, "maxLength": 64, "description": "What is installed, for people."},
+        "requires": {"type": "array", "items": {"type": "string"}, "description": "Other tools of the manifest installed (and on PATH) first."},
+        "check": {"$ref": "#/$defs/ToolCheck"},
+        "archive": {"type": "object", "additionalProperties": {"$ref": "#/$defs/ToolArchive"}, "description": "By <GOOS>-<GOARCH>."},
+        "npm": {"$ref": "#/$defs/ToolNPM"}
+      },
+      "required": ["name", "version"]
+    },
+    "ToolCheck": {
+      "description": "A copy on the hub's PATH (outside the home directory) is used instead of installing one when <name> <args> prints a version (the first x.y.z) of at least min_version.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "args": {"type": "array", "maxItems": 8, "items": {"type": "string"}, "description": "Default --version."},
+        "min_version": {"type": "string", "pattern": "[0-9]+\\.[0-9]+\\.[0-9]+"}
+      }
+    },
+    "ToolArchive": {
+      "description": "A download: a .tar.gz, .tgz or .zip with the program at path, or the program itself.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": {"type": "string", "pattern": "^https://"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "path": {"type": "string"},
+        "mirrors": {"type": "array", "maxItems": 4, "items": {"type": "string", "pattern": "^https://"}}
+      },
+      "required": ["url", "sha256"]
+    },
+    "ToolNPM": {
+      "description": "An npm package unpacked as published: no install scripts, no dependencies (a bundled package).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "package": {"type": "string"},
+        "version": {"type": "string"},
+        "integrity": {"type": "string", "pattern": "^sha(256|512)-"},
+        "registry": {"type": "string", "pattern": "^https://", "description": "Default https://registry.npmjs.org."},
+        "bin": {"type": "string", "description": "The key of package.json's bin; default the tool's name."}
+      },
+      "required": ["package", "version", "integrity"]
+    },
+    "AuthSpec": {
+      "description": "The extension signs in: its program answers auth.status, auth.step and auth.logout (docs \"Sign-in (auth)\").",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {"type": "string", "minLength": 1, "maxLength": 40},
+        "description": {"type": "string"},
+        "page": {"type": "string", "description": "An extension_page (plugin_page) ui contribution: its own sign-in page for apps that do not know auth; apps that do leave it out of its pages."}
+      },
+      "required": ["title"]
+    },
+    "Dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "version": {"$ref": "#/$defs/VersionRange", "description": "A range of its versions: >=1.2.0, <2.0.0, or both with a space between."}
+      },
+      "required": ["id"]
+    },
+    "Exports": {
+      "description": "Extension points it opens to other extensions: they contribute under contributes[\"<this id>.<point id>\"] and depend on it.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "extension_points": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/$defs/ExportedPoint"}}
+      },
+      "required": ["extension_points"]
+    },
+    "ExportedPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"},
+        "version": {"type": "integer", "minimum": 1},
+        "description": {"type": "string"},
+        "schema": {"description": "Each contribution's JSON Schema, in the configuration's subset (docs \"Configuration: the form subset\"); id is always there and required."}
+      },
+      "required": ["id", "version"]
+    },
+    "PackMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "market": {"type": "string", "description": "The address of the market it comes from (github:owner/repo, https://…), as the hub registered it; empty: the pack's own market, else the first registered market that has it."},
+        "version": {"$ref": "#/$defs/VersionRange", "description": "A range of its versions, as in depends."}
+      },
+      "required": ["id"]
+    },
+    "Engines": {
+      "description": "What the extension runs on. extension_protocol is plugin_protocol's new name; a hub reads either.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "persona": {"type": "string", "description": "A range of hub build numbers (\">=202611050000 <202701010000\").",
+          "pattern": "^(\\s*(>=|<)\\+?0*[1-9][0-9]*(\\s+(>=|<)\\+?0*[1-9][0-9]*)*\\s*)?$"},
+        "extension_protocol": {"type": "integer", "const": 1},
+        "plugin_protocol": {"type": "integer", "const": 1}
+      }
+    },
+    "Runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {"type": "string", "enum": ["process", "deno"], "description": "Default process preserves executable packages. deno requires a self-contained source bundle and verified independent Linux isolation."},
+        "source": {"$ref": "#/$defs/SourceRuntime"},
+        "command": {"$ref": "#/$defs/Command"},
+        "args": {"type": "array", "items": {"type": "string"}},
+        "env": {"type": "object", "additionalProperties": {"type": "string"}, "propertyNames": {"$ref": "#/$defs/EnvName"}},
+        "rpc": {"type": "string", "enum": ["stdio", "none"]},
+        "http": {"type": "boolean"},
+        "resources": {"$ref": "#/$defs/Resources"}
+      },
+      "allOf": [
+        {"oneOf": [
+          {"required": ["command"], "not": {"required": ["source"]}, "properties": {"mode": {"enum": ["process"]}}},
+          {"required": ["mode", "source"], "properties": {"mode": {"const": "deno"}, "rpc": {"const": "stdio"}, "http": {"const": false}}, "not": {"anyOf": [{"required": ["command"]}, {"required": ["args"]}, {"required": ["env"]}]}}
+        ]},
+        {"description": "command: a package path, or one per <os>-<arch>.", "properties": {"command": {"anyOf": [
+          {"$ref": "#/$defs/PackagePath"},
+          {"type": "object", "minProperties": 1, "propertyNames": {"pattern": "^[a-z0-9]+-[a-z0-9]+$"}, "additionalProperties": {"$ref": "#/$defs/PackagePath"}}
+        ]}}},
+        {"description": "rpc none needs http: the hub could not talk to it otherwise.", "anyOf": [{"properties": {"rpc": {"const": "stdio"}}}, {"required": ["http"], "properties": {"http": {"const": true}}}]}
+      ]
+    },
+    "PackagePath": {
+      "description": "A path inside the package: relative, / only, clean (no . or .. part, no // or trailing /).",
+      "type": "string", "minLength": 1, "not": {"pattern": "^/|\\\\|(^|/)\\.\\.?(/|$)|//|/$"}
+    },
+    "EnvName": {
+      "description": "An environment variable name; not the hub's (PERSONA_*) nor the dynamic loader's (LD_*, DYLD_*).",
+      "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "not": {"pattern": "^(PERSONA_|LD_|DYLD_)"}
+    },
+    "SourceRuntime": {
+      "type": "object", "additionalProperties": false,
+      "description": "entry is offline build input only; bundle is the signed self-contained artifact, verified again on each start. No runtime dependency resolution.",
+      "properties": {
+        "entry": {"type": "string", "pattern": "^[a-zA-Z0-9_/-]+\\.tsx?$"},
+        "bundle": {"type": "string", "pattern": "^[a-zA-Z0-9_/-]+\\.mjs$"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "required": ["entry", "bundle", "sha256"]
+    },
+    "Resources": {
+      "description": "The most a program may use when the hub runs it in a sandbox (docs/extensions/extensions.md \"Sandbox\"): memory in MB, CPU in percent of one core. Unset: 1024 MB, 100%.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memory_mb": {"type": "integer", "minimum": 64, "maximum": 8192},
+        "cpu_percent": {"type": "integer", "minimum": 10, "maximum": 800}
+      }
+    },
+    "Command": {
+      "description": "A path in the package, or one per platform ({\"linux-amd64\": \"bin/x\"}).",
+      "x-untagged": true,
+      "oneOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "object", "additionalProperties": {"type": "string"}}
+      ]
+    },
+    "NodeRuntime": {
+      "description": "The extension's program on computers (docs/extensions/extensions.md \"Programs running on computers\"): one per platform (darwin-* / linux-*), on the machines picked in the configuration field `machines` (an array of format machine, x-os the programs' systems).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "command": {"$ref": "#/$defs/Command"},
+        "args": {"type": "array", "items": {"type": "string"}},
+        "env": {"type": "object", "additionalProperties": {"type": "string"}, "propertyNames": {"$ref": "#/$defs/EnvName"}},
+        "machines": {"type": "string", "minLength": 1},
+        "rpc": {"type": "string", "enum": ["stdio", "none"]},
+        "http": {"type": "boolean"},
+        "keep_running": {"type": "string", "enum": ["lease", "always"]},
+        "secrets": {"type": "array", "items": {"type": "string"}},
+        "permissions": {"$ref": "#/$defs/NodePermissions"}
+      },
+      "required": ["command", "machines"],
+      "allOf": [
+        {"description": "command: one package path per darwin-<arch> / linux-<arch>, not the hub's own binary.", "properties": {"command": {
+          "type": "object", "minProperties": 1, "propertyNames": {"pattern": "^(darwin|linux)-[a-z0-9]+$"},
+          "additionalProperties": {"$ref": "#/$defs/PackagePath", "not": {"const": "personad"}}
+        }}},
+        {"description": "rpc none needs http: the hub could not talk to it otherwise.", "anyOf": [{"properties": {"rpc": {"const": "stdio"}}}, {"required": ["http"], "properties": {"http": {"const": true}}}]}
+      ]
+    },
+    "NodePermissions": {
+      "description": "What the program on computers asks for there: hosts it reaches, files outside its data directory, macOS's privacy permissions.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "network": {"type": "array", "items": {"$ref": "#/$defs/Host"}},
+        "files": {"type": "boolean"},
+        "macos_privacy": {"type": "boolean"}
+      }
+    },
+    "SecretSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"},
+        "title": {"type": "string", "minLength": 1, "pattern": "\\S"},
+        "description": {"type": "string"},
+        "required": {"type": "boolean"},
+        "hint": {"description": "last4: once set, the settings show its last four characters.", "enum": ["last4"]}
+      },
+      "required": ["name", "title"]
+    },
+    "Permissions": {
+      "description": "A closed vocabulary: a permission the hub does not know fails the install.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "network": {"type": "array", "items": {"$ref": "#/$defs/NetworkEntry"}},
+        "hub_api": {"type": "boolean", "description": "The old way: the hub's full token. With hub scopes, the scopes win."},
+        "hub": {"type": "array", "description": "The scopes of the hub's API it calls: its token opens their routes only.",
+          "items": {"type": "string", "pattern": "^(kb\\.read|kb\\.write|sent\\.read|inbox\\.read|inbox\\.write|agents\\.read|agents\\.control|agents\\.permission_mode|machines\\.read|notify|assistant\\.ask|assistant\\.read|todos\\.read|todos\\.write|leaders\\.read|models|extensions\\.call:[a-z0-9][a-z0-9_-]{0,31})$"}},
+        "launcher_keys": {"type": "boolean"},
+        "gh_login": {"type": "boolean", "description": "It asks the hub for the GitHub token of a computer's gh login (the one the user picks for the GitHub connector), held in its memory only."},
+        "usage_gateways": {"type": "boolean", "description": "It reads the account list of the account-pool gateways in the hub's usage sources (usage.gateway_accounts): accounts, status and quota windows, never a key."},
+        "agent_runtimes": {"type": "boolean", "description": "Its program is an agent runtime that connects to this machine's node; in a sandbox it gets a socket in its run directory (PERSONA_RUNTIME_SOCKET) that leads to the node's runtime.sock only. Needs runtime."},
+        "error_reports": {"type": "boolean", "description": "It receives the error and crash reports of the hub and the user's devices, scrubbed (no message text, tokens, user names, machine names or IP addresses). Needed by contributes.error_reports."},
+        "storage": {"$ref": "#/$defs/StoragePermission"},
+        "auth_relay": {"type": "boolean", "description": "It is handed the authorization links the user's Agents stop at (only links its contributes.auth_relay names, printed by the Agent's own command) to complete them with the account it is signed in with. Needed by contributes.auth_relay."}
+      }
+    },
+    "StoragePermission": {
+      "description": "Default-deny installation-scoped business data, separate from credentials. Only declared logical keys or literal prefixes ending in *; no filesystem, SQL, hub or network access. CAS and transactions use existing RPC limits and host quotas. Queue and blob methods additionally require their flags.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "keys": {"type": "array", "maxItems": 128, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
+        "patterns": {"type": "array", "maxItems": 32, "items": {"type": "string", "minLength": 2, "maxLength": 128}},
+        "queues": {"type": "boolean"},
+        "blobs": {"type": "boolean"}
+      }
+    },
+    "Contributes": {
+      "description": "Contributions by extension point. A point this hub does not know installs with a warning, not taking effect.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": true,
+      "properties": {
+        "connectors": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ConnectorItem"}},
+        "voice": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/NamedItem"}},
+        "computer": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/NamedItem"}},
+        "browser": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/NamedItem"}},
+        "iphone": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/NamedItem"}},
+        "quota": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/QuotaItem"}},
+        "providers": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ProviderItem"}},
+        "api": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/APIItem"}},
+        "assistant": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/AssistantItem"}},
+        "mcp_servers": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/MCPServerItem"}},
+        "ui": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/UIItem"}},
+        "agent_sources": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/AgentSourceItem"}},
+        "channel": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ChannelItem"}},
+        "events": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/EventsItem"}},
+        "shortcuts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ShortcutItem"}},
+        "skills": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/SkillItem"}},
+        "prompts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/PromptItem"}},
+        "themes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ThemeItem"}},
+        "looks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/LookItem"}},
+        "triage_templates": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/TriageTemplateItem"}},
+        "agent_filters": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/AgentFilterItem"}},
+        "tunnels": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/TunnelItem"}},
+        "error_reports": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/ErrorReportsItem"}},
+        "auth_relay": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/AuthRelayItem"}},
+        "secret_providers": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/SecretProviderItem"}},
+        "messaging": {"type": "array", "minItems": 1, "items": {"$ref": "messaging.schema.json#/$defs/MessagingItem"}}
+      }
+    },
+    "SkillItem": {
+      "description": "A skill (docs \"Declarative contributions\"): a directory of the package with SKILL.md, put in with the assistant's skills.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "dir": {"type": "string", "description": "The directory, relative to the package."}
+      },
+      "required": ["id", "dir"]
+    },
+    "PromptKind": {"type": "string", "enum": ["instructions", "quick"]},
+    "PromptItem": {
+      "description": "A prompt: instructions (a .md of the package added to the assistant's CLAUDE.md) or quick (a template the apps offer in the message box).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "kind": {"$ref": "#/$defs/PromptKind"},
+        "file": {"type": "string", "description": "instructions: the .md file."},
+        "title": {"type": "string", "maxLength": 40, "description": "quick: what the apps show."},
+        "text": {"type": "string", "maxLength": 4000, "description": "quick: what goes into the message box."}
+      },
+      "required": ["id", "kind"]
+    },
+    "ThemeColors": {
+      "description": "A scheme's role colors, #RRGGBB: accent (required), positive, caution, danger, ai.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accent": {"$ref": "#/$defs/HexColor"},
+        "positive": {"$ref": "#/$defs/HexColor"},
+        "caution": {"$ref": "#/$defs/HexColor"},
+        "danger": {"$ref": "#/$defs/HexColor"},
+        "ai": {"$ref": "#/$defs/HexColor"}
+      },
+      "required": ["accent"]
+    },
+    "HexColor": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+    "ThemeItem": {
+      "description": "A theme (Theme Color): the design system's role colors for light and dark; the apps check the contrast and do not offer one that fails.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 20},
+        "light": {"$ref": "#/$defs/ThemeColors"},
+        "dark": {"$ref": "#/$defs/ThemeColors"}
+      },
+      "required": ["id", "name", "light", "dark"]
+    },
+    "LookID": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$", "description": "A look's id: also a persona package's (the apps cache by it)."},
+    "BuiltinLook": {"type": "string", "enum": ["persona"], "description": "The look every app draws itself: Mochi (the default)."},
+    "LookTexts": {
+      "description": "A text in the other languages, by code (docs/protocol/i18n.md): only zh-Hans, en and ja, each 1 to 40 characters (the hub checks).",
+      "type": "object",
+      "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 40}
+    },
+    "LookAvatarDark": {
+      "description": "The face on dark backgrounds; what it leaves out is the light one's.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sizes": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Side in pixels → a square PNG of the package."},
+        "svg": {"type": "string", "description": "An SVG of the package (the hub cleans it)."}
+      }
+    },
+    "LookAvatar": {
+      "description": "The face: square PNGs by their side in pixels (16 to 1024, at least one), an SVG, and the same for dark mode.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sizes": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Side in pixels → a square PNG of the package."},
+        "svg": {"type": "string", "description": "An SVG of the package (the hub cleans it: no scripts, nothing from outside it)."},
+        "safe": {"type": "number", "minimum": 0, "maximum": 1, "description": "The share of the circle what matters stays inside."},
+        "dark": {"$ref": "#/$defs/LookAvatarDark"}
+      },
+      "required": ["sizes"]
+    },
+    "LookPalette": {
+      "description": "An appearance's colors, #RRGGBB (docs/apple/persona.md \"Color scheme\", the apps' PersonaPalette).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "primary": {"$ref": "#/$defs/HexColor"},
+        "secondary": {"$ref": "#/$defs/HexColor"},
+        "accent": {"$ref": "#/$defs/HexColor"},
+        "bubble": {"$ref": "#/$defs/HexColor"},
+        "bubble_text": {"$ref": "#/$defs/HexColor"}
+      }
+    },
+    "LookColors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "light": {"$ref": "#/$defs/LookPalette"},
+        "dark": {"$ref": "#/$defs/LookPalette"}
+      }
+    },
+    "LookDotState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file": {"type": "string", "description": "An APNG (or a still PNG) of the package."},
+        "fps": {"type": "number", "minimum": 0}
+      },
+      "required": ["file"]
+    },
+    "LookDotStates": {
+      "description": "The dot's states; idle is required.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "idle": {"$ref": "#/$defs/LookDotState"},
+        "thinking": {"$ref": "#/$defs/LookDotState"},
+        "working": {"$ref": "#/$defs/LookDotState"},
+        "needs_you": {"$ref": "#/$defs/LookDotState"},
+        "offline": {"$ref": "#/$defs/LookDotState"}
+      },
+      "required": ["idle"]
+    },
+    "LookDot": {
+      "description": "The animated dot in the Persona tab's top bar; without it the hub takes the largest avatar PNG as idle.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "size": {"type": "integer", "minimum": 16, "maximum": 512, "description": "The frames' side in pixels."},
+        "states": {"$ref": "#/$defs/LookDotStates"}
+      },
+      "required": ["states"]
+    },
+    "LookItem": {
+      "description": "A look (docs/extensions/extensions.md \"Avatars\"): Persona's name, face, colors and dot, served as a persona package. app_icon_fallback is the built-in icon used where only the app's own icons can be shown.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/LookID"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 20},
+        "names": {"$ref": "#/$defs/LookTexts"},
+        "subtitle": {"type": "string", "maxLength": 40},
+        "subtitles": {"$ref": "#/$defs/LookTexts"},
+        "avatar": {"$ref": "#/$defs/LookAvatar"},
+        "colors": {"$ref": "#/$defs/LookColors"},
+        "dot": {"$ref": "#/$defs/LookDot"},
+        "app_icon_fallback": {"$ref": "#/$defs/BuiltinLook"}
+      },
+      "required": ["id", "name", "avatar", "app_icon_fallback"]
+    },
+    "TriageTemplateItem": {
+      "description": "A template of an inbox source's triage rules (triage_rules): settings offer it.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 40},
+        "text": {"type": "string", "minLength": 1, "maxLength": 4000}
+      },
+      "required": ["id", "title", "text"]
+    },
+    "AuthRelayItem": {
+      "description": "Authorization links it completes for the user's Agents (auth_relay.complete): links on these hosts and paths, https only. Needs the program to speak the protocol and permissions.auth_relay.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 80, "description": "What it completes, in a few words (shown in the extension's details)."},
+        "hosts": {"type": "array", "description": "The pages' exact host names.", "minItems": 1, "maxItems": 16, "uniqueItems": true,
+          "items": {"$ref": "#/$defs/ExactHost"}},
+        "paths": {"type": "array", "description": "The pages' exact paths (a trailing / is ignored).", "minItems": 1, "maxItems": 16, "uniqueItems": true,
+          "items": {"type": "string", "maxLength": 256, "pattern": "^/[^?#\\s]*$"}}
+      },
+      "required": ["id", "hosts", "paths"]
+    },
+    "SecretProviderItem": {
+      "description": "Secret values it supplies for references of its schemes (op://vault/item/field): the manager calls secrets.describe and secrets.resolve when a setting holds such a reference or the user approves handing one to an Agent run. Needs the program to speak the protocol. A scheme another installed extension claims fails the install.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 80, "description": "Whose secrets these are, in a few words (1Password): the settings say From <name>."},
+        "schemes": {"type": "array", "description": "The reference schemes it resolves, without :// (op).", "minItems": 1, "maxItems": 4, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9+.-]{0,15}$", "not": {"enum": ["http", "https", "file", "data", "persona", "about", "javascript"]}}}
+      },
+      "required": ["id", "name", "schemes"]
+    },
+    "ErrorReportsItem": {
+      "description": "It is given the error and crash reports of the hub and the user's devices (error_reports.deliver): needs the program to speak the protocol, on_startup and permissions.error_reports.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "sources": {"type": "array", "description": "Only reports from these; omitted: all.", "minItems": 1, "uniqueItems": true,
+          "items": {"$ref": "protocol.schema.json#/$defs/ErrorSource"}}
+      },
+      "required": ["id"]
+    },
+    "TunnelItem": {
+      "description": "A tunnel the apps can reach this hub through when its own addresses do not answer (docs \"In-app tunnels\"): an in-app tunnel core built into the app, going to the configuration's target_host and target_port; an optional integer ssh_port is the hub machine's SSH port, for an SSH tunnel the app dials through this tunnel.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 40}
+      },
+      "required": ["id", "name"]
+    },
+    "AgentFilterItem": {
+      "description": "Agent sessions kept out of Agents (docs \"Agent filters\"): a session goes when it is one of agents and any of the matchers fits it.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "title": {"type": "string", "maxLength": 40, "description": "What the extension's contributions list calls it."},
+        "when": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "A boolean field of the configuration: the filter holds only while it is true, and that field is its only switch. Without it the filter holds while the extension is on."},
+        "agents": {"type": "array", "items": {"type": "string", "enum": ["claude", "codex"]}, "description": "Whose sessions: Claude Code, Codex; none: both."},
+        "originators": {"type": "array", "items": {"type": "string", "minLength": 1}, "maxItems": 16, "description": "Codex: session_meta.originator of the rollout, exactly."},
+        "added_dirs": {"type": "array", "items": {"type": "string", "minLength": 2}, "maxItems": 16, "description": "Claude Code: a directory the session was given besides its own (additionalWorkingDirectories), this or under it; ~/ is the home directory."},
+        "first_message_prefixes": {"type": "array", "items": {"type": "string", "minLength": 8, "maxLength": 200}, "maxItems": 16, "description": "The first user message starts with one of these (leading blanks ignored): a fallback for sessions without a marker."}
+      },
+      "required": ["id"]
+    },
+    "ConnectorItem": {
+      "description": "The connector protocol's manifest (docs/protocol/connector-protocol.md).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*$"},
+        "name": {"type": "string", "minLength": 1},
+        "capabilities": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "hosts": {"type": "array", "items": {"type": "string"}},
+        "agent_tools": {"type": "array", "items": {"type": "string"}},
+        "unlisted": {"type": "array", "items": {"type": "string"}},
+        "confirm_always": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "poll_seconds": {"type": "integer", "minimum": 0},
+        "kinds": {"type": "array", "items": {"type": "string"}},
+        "kind_descriptions": {"type": "object", "additionalProperties": {"type": "string"}},
+        "archive_sources": {"type": "array", "maxItems": 4, "items": {"type": "string", "pattern": "^[a-z][a-z0-9]*$"}},
+        "meta_description": {"type": "string", "maxLength": 4000},
+        "cli": {"type": "string", "pattern": "^([a-z][a-z0-9-]{0,31})?$", "not": {"enum": ["personad", "lark-cli", "sh", "bash", "git", "gh", "curl", "python3", "node", "claude", "codex"]}},
+        "sends_as_user": {"type": "boolean", "description": "The connector sends messages in the user's name by itself, not through the hub's write gate (a read tool that also replies, say). Its program may then record each one in the sent-as-user ledger with sent.record, and the install preview says so."}
+      },
+      "required": ["id", "name", "capabilities"]
+    },
+    "NamedItem": {
+      "description": "A contribution with only an id and a name: voice, computer, browser.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string"}
+      },
+      "required": ["id"]
+    },
+    "QuotaItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string", "minLength": 1},
+        "hosts": {"type": "array", "items": {"$ref": "#/$defs/Host"}}
+      },
+      "required": ["id", "name"]
+    },
+    "ProviderItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string", "minLength": 1},
+        "description": {"type": "string"},
+        "kind": {"type": "string", "enum": ["launcher", "api"]},
+        "api": {"type": "string", "enum": ["messages", "responses"]},
+        "base_url": {"type": "string", "pattern": "^https?://([^/?#@\\s]*@)?[^/?#@\\s]+([/?#]|$)"},
+        "model": {"type": "string"},
+        "small_model": {"type": "string"},
+        "models": {"type": "array", "items": {"$ref": "#/$defs/ProviderModel"}},
+        "dynamic_models": {"type": "boolean"},
+        "key_hint": {"type": "string"}
+      },
+      "required": ["id", "name", "base_url"]
+    },
+    "ProviderModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"id": {"type": "string", "minLength": 1}, "name": {"type": "string"}},
+      "required": ["id"]
+    },
+    "APIItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "prefix": {"$ref": "#/$defs/ID"},
+        "features": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,47}$"}},
+        "events": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,47}$"}},
+        "receipts": {"type": "array", "items": {"$ref": "#/$defs/APIReceipt"}}
+      },
+      "required": ["id", "prefix"]
+    },
+    "APIReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "method": {"type": "string", "enum": ["POST", "PUT", "PATCH", "DELETE"]},
+        "path": {"type": "string", "pattern": "^/"},
+        "kind": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,47}$"}
+      },
+      "required": ["method", "path", "kind"]
+    },
+    "AssistantItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "skills": {"type": "array", "items": {"type": "string"}},
+        "instructions": {"type": "string"},
+        "gate": {"type": "string"}
+      },
+      "required": ["id"]
+    },
+    "MCPServerItem": {
+      "description": "An MCP server for the Claude assistant (docs \"MCP servers\"): a command line on the assistant's machine, its tools as mcp__<id>__<tool>. The command reads its own configuration; Persona adds nothing to its environment. Not a shell or an interpreter.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID", "description": "The server's name for the assistant; not persona or persona."},
+        "command": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$", "description": "Looked up on PATH, then in ~/bin."},
+        "env": {"type": "string", "pattern": "^PERSONA_[A-Z0-9_]{1,56}$", "description": "A PERSONA_ variable (PERSONA_ read too) that, when set, replaces the lookup: a path, or \"\" / 0 / off / false to leave the server out."},
+        "args": {"type": "array", "items": {"type": "string"}},
+        "requires": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "Words `<command> --help` must print; otherwise the server is left out."},
+        "allow": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"}, "description": "Tools that run without asking."},
+        "deny": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"}, "description": "Tools never callable. Any other tool goes by the conversation's permission mode."}
+      },
+      "required": ["id", "command"]
+    },
+    "UIItem": {
+      "description": "A place in the apps the extension draws (docs \"UI slots\").",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 40},
+        "placement": {"$ref": "view.schema.json#/$defs/Placement"},
+        "hosts": {"type": "array", "items": {"$ref": "#/$defs/Host"}, "description": "launcher_section only."},
+        "icon": {"$ref": "view.schema.json#/$defs/NavIcon", "description": "nav_page only."},
+        "opens": {"type": "string", "description": "overview_card, capsule_card and widget only: a nav_page or extension_page of the same extension."},
+        "connector": {"type": "string", "description": "inbox_item only: one of the extension's own connectors."},
+        "families": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "view.schema.json#/$defs/WidgetFamily"}, "description": "widget only (and needed there): the sizes it can be drawn at."},
+        "refresh_minutes": {"type": "integer", "minimum": 15, "maximum": 1440, "description": "widget only: how often the widget is drawn again on its own (30 when not said)."}
+      },
+      "required": ["id", "title", "placement"],
+      "anyOf": [
+        {"properties": {"placement": {"const": "widget"}}, "required": ["families"]},
+        {"properties": {"placement": {"not": {"const": "widget"}}}, "not": {"anyOf": [{"required": ["families"]}, {"required": ["refresh_minutes"]}]}}
+      ]
+    },
+    "AgentSourceItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string", "minLength": 1},
+        "providers": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"}}
+      },
+      "required": ["id", "name"]
+    },
+    "ChannelItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 40},
+        "kind": {"type": "string", "enum": ["im"]},
+        "connector": {"type": "string"},
+        "bind": {"type": "string", "enum": ["qr", "code", "fields"]},
+        "description": {"type": "string"},
+        "capabilities": {"$ref": "#/$defs/ChannelCapabilities"}
+      },
+      "required": ["id", "name", "kind", "capabilities"]
+    },
+    "ChannelCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "images_in": {"type": "boolean"},
+        "files_in": {"type": "boolean"},
+        "voice_in": {"type": "boolean"},
+        "format": {"type": "string", "enum": ["markdown", "plain"]},
+        "max_text": {"type": "integer", "minimum": 0},
+        "asks": {"type": "string", "enum": ["none", "text", "buttons"]},
+        "push": {"type": "boolean"},
+        "typing": {"type": "boolean"},
+        "progress": {"type": "boolean"},
+        "threads": {"type": "boolean"}
+      }
+    },
+    "EventsItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "subscribe": {"type": "array", "minItems": 1, "items": {"type": "string", "enum": ["kb.changed", "kb.forgotten", "inbox.changed", "agent.needs_you", "agent.finished", "todo.changed", "todo.decision", "leader.changed", "leader.report"]}}
+      },
+      "required": ["id", "subscribe"]
+    },
+    "ShortcutItem": {
+      "description": "An action of the extension the system runs (docs \"System placements\"): Shortcuts and Siri on iPhone, Mac and Apple Watch. The hub asks the extension shortcut.run with the values.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 40},
+        "description": {"type": "string", "maxLength": 200},
+        "params": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/ShortcutParam"}},
+        "ui": {"type": "string", "description": "A whole page of the same extension (nav_page or extension_page) the app opens to show more of the result."}
+      },
+      "required": ["id", "title"]
+    },
+    "ShortcutParam": {
+      "description": "A value the shortcut asks for; it reaches the extension as a string (a toggle's \"true\" / \"false\").",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 40},
+        "kind": {"$ref": "#/$defs/ShortcutParamKind"},
+        "choices": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"$ref": "view.schema.json#/$defs/Choice"}, "description": "choice only."},
+        "required": {"type": "boolean"}
+      },
+      "required": ["name", "title", "kind"],
+      "anyOf": [
+        {"properties": {"kind": {"const": "choice"}}, "required": ["choices"]},
+        {"properties": {"kind": {"not": {"const": "choice"}}}, "not": {"required": ["choices"]}}
+      ]
+    },
+    "ShortcutParamKind": {"type": "string", "enum": ["text", "number", "toggle", "choice"]}
+  }
+}

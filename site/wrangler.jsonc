@@ -1,0 +1,24 @@
+{
+  // Deploy it only with scripts/release/publish.sh (SITE_ONLY=1 for the pages alone): it adds dl/ (the public personad)
+  // and install.sh to a copy of this directory. A plain `wrangler deploy` here serves without them, and every hub's
+  // update check and install.sh 404.
+  "name": "persona-site",
+  "compatibility_date": "2026-10-01",
+  "account_id": "2de3432934ff3b7c3cb742a2f09635a1",
+  // Static files, except /relay/* (the push relay, docs/operations/push-relay.md), which worker.mjs forwards, /dl/*.gz (the
+  // public personad), which worker.mjs reads from the R2 bucket DL (#2541: a static file is at most 25 MiB), and the
+  // extension catalog and icons behind the /extensions page (extensions.mjs).
+  "main": "worker.mjs",
+  "assets": { "directory": "public", "binding": "ASSETS", "html_handling": "auto-trailing-slash", "not_found_handling": "404-page",
+              "run_worker_first": ["/relay/*", "/dl/*", "/extensions/catalog.json", "/extensions/icons/*"] },
+  "r2_buckets": [
+    { "binding": "DL", "bucket_name": "persona-dl" }
+  ],
+  // personaside.com is the address. It points at the Hong Kong entry for mainland China (docs/operations/site.md), which forwards
+  // here through origin.personaside.com; it must not be a custom domain of this Worker, or a deploy takes the name back.
+  // A deploy drops any custom domain not listed here.
+  "routes": [
+    { "pattern": "origin.personaside.com", "custom_domain": true }
+  ],
+  "workers_dev": false
+}

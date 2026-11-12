@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>隐私政策 · Persona</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <h1>隐私政策</h1>
+  <p class="muted">更新于 2026 年 11 月 12 日</p>
+
+  <p>Persona 是自托管的个人 AI 助手。App 的完整功能连接你自己部署的服务器（hub），不提供托管账号；未配对时可以先用内置的虚构数据演示，演示不会连接真实 hub、发送邮件或执行电脑操作。开发者运营的只有两样：这个网站，以及给没有自己推送密钥的 hub 用的推送中继（见下面「推送中继」）。除此之外，你的数据只在你的设备和你自己的 hub 之间。开发者不收集你自己 hub 上的邮件、照片、健康等内容，不出售用户数据，也不将其用于广告或追踪。可选推送中继会处理推送标识并记录技术诊断日志（见下文）；App 不含广告或统计 SDK。</p>
+
+  <h2>Gmail 数据</h2>
+  <ul>
+    <li>添加 Gmail 时，你在 Google 的授权页面同意 Persona 访问邮箱（<code>https://mail.google.com/</code>）以及邮箱地址（<code>openid</code>、<code>email</code>）。Persona 不会看到你的 Google 密码。</li>
+    <li>授权得到的 refresh token 经 AES-256-GCM 加密后，只保存在你自己部署的 hub 上，用于通过 IMAP / SMTP 收信、发信。</li>
+    <li>邮件内容在你打开、搜索时实时从 Gmail 读取，服务器不保存邮件副本；App 可能在本机缓存最近看过的列表，以便离线显示。</li>
+    <li>只有在你让 Persona 里的 AI 助手（Claude）处理邮件时，相关邮件内容才会作为对话内容发送给模型服务。发信前一定先在手机上由你确认。</li>
+    <li>Persona 对 Google 用户数据的使用遵守 <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API 服务用户数据政策</a>，包括其中的「有限使用」要求：数据只用于为你提供邮件功能，不用于广告，不转让给他人，也不用于训练通用模型。</li>
+  </ul>
+
+  <h2>撤销与删除</h2>
+  <p>在 Persona 里删除邮箱账号，会同时删除服务器上保存的凭据。你也可以随时在 Google 账号的
+    <a href="https://myaccount.google.com/connections">「第三方应用和服务」</a>里撤销 Persona 的访问权限。</p>
+
+  <h2>其他数据</h2>
+  <p>你授权后，Persona 可以读写 iPhone 上的通讯录、日历、提醒事项、照片、健康、位置等数据，仅在你主动使用相关功能时访问，数据只在你的设备和你自己部署的 hub 之间传输；只有在你让 AI 助手（Claude）使用这些数据时，相关内容才会作为对话内容发送给模型服务。</p>
+
+  <h2>推送中继</h2>
+  <ul>
+    <li>iPhone 的通知要经 Apple 的推送服务（APNs）发出。hub 如果没有配置自己的 APNs 推送密钥，会经开发者运营的推送中继发送；配置了自己的密钥、或自己搭一个中继，就不经过它。</li>
+    <li>手机向中继登记它的 APNs 设备 token，换回一张由中继密钥加密的凭据，交给你自己的 hub；中继不保存设备列表。</li>
+    <li>普通通知、提问、任务完成和后台唤醒的正文，由 hub 用手机的公钥加密，只有你的手机能解开。中继只看得到密文，以及发给哪台设备、什么时间、多大。解不开时手机只显示「有新消息」，不会退回明文。</li>
+    <li>锁屏和灵动岛的实时活动（Live Activity）由 iOS 直接读取推送里的内容，无法加密，所以经中继时中继能看到它显示的内容：会话标题、电脑名、进度和计数、正在问什么或命令的摘要。在意的话可以在 hub 配置自己的 APNs 密钥或自己搭中继。</li>
+    <li>中继的技术诊断日志记录设备推送标识的短哈希、推送类型、响应状态、耗时和大小，用于排查故障、维护推送功能。连接错误日志可能包含带推送标识的请求地址；日志不记录通知正文。诊断信息可按设备标识关联，但不与姓名、邮箱或账号信息结合，不用于广告或跨 App 追踪。</li>
+    <li>中继只用于转发这些推送和维护推送功能，不用于任何其他用途。</li>
+  </ul>
+
+  <h2>网站</h2>
+  <p>这个网站和推送中继的入口托管在 Cloudflare，访问日志由 Cloudflare 按它自己的规则处理。网站本身不设置 Cookie，也不加载任何第三方脚本、字体或统计服务。</p>
+
+  <h2>TestFlight</h2>
+  <p>通过 TestFlight 测试时，Apple 会按它自己的规则把安装情况、崩溃报告和你主动提交的反馈提供给开发者，开发者只用来改进 Persona。</p>
+
+  <h2>联系</h2>
+  <p><a href="/#contact">联系 Persona</a>，或在官网提交问题反馈。</p>
+
+  <nav><a href="/">Persona</a><a href="/terms/">服务条款</a></nav>
+</main>
+</body>
+</html>

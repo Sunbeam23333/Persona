@@ -1,0 +1,435 @@
+// The live screen of a Mac (docs/extensions/computer-use.md "Live view"): macOS's Screen Sharing on its 127.0.0.1:5900, through the
+// hub's port relay, drawn by noVNC. View only until "Take control"; Screen Sharing asks for the Mac account's name and password
+// (Apple's ARD sign-in), which go to the Mac only and are not kept. The app shows this page in its web view.
+import { BASE } from "../lib/base";
+import RFB from "@novnc/novnc";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { api, ApiError, errorText, pastHub } from "../lib/api";
+import { cx, Spinner } from "../ui/atoms";
+import { t } from "../i18n";
+import "../views/theme"; // follows the system's light / dark while open (index.html picked the first one)
+import { ensureSubtleAES } from "./aes";
+import { displayChoice, framing, keepPointerIn, layoutDisplays, machineDisplays, setDisplayChoice, type MachineDisplay, type Rect, type Size } from "./displays";
+import { accountOf, keepLabel, keysymsOf, screenSocket, toApp, type ScreenTarget } from "./screen";
+
+const DisplayMenu = lazy(() => import("./DisplayMenu"));
+
+type Phase =
+  | { kind: "checking" }
+  | { kind: "blocked"; why: string }
+  | { kind: "connecting" }
+  | { kind: "signin"; failed?: string }
+  | { kind: "live" }
+  | { kind: "closed"; why: string };
+
+type Computer = { enabled?: boolean; screen_sharing?: boolean; displays?: unknown };
+/** A sign-in sent to the Mac: typed (and to keep or not), or the one the app kept (saved). */
+type Credentials = { account: string; password: string; remember: boolean; saved: boolean };
+type MachineRow = { id: string; name: string; home?: string; online: boolean };
+
+export function ScreenView({ target }: { target: ScreenTarget }) {
+  const [phase, setPhase] = useState<Phase>({ kind: "checking" });
+  const [name, setName] = useState(target.name);
+  const [account, setAccount] = useState("");
+  const [password, setPassword] = useState("");
+  const [control, setControl] = useState(false);
+  const controlRef = useRef(false);
+  controlRef.current = control;
+  const [attempt, setAttempt] = useState(0);
+  // The app keeps the Mac's sign-in (#1322): "Remember on this phone", on unless unticked.
+  const canKeep = target.embedded && target.keep !== "";
+  const [remember, setRemember] = useState(true);
+  const queued = useRef<Credentials | null>(null); // typed while there was no connection waiting: sent on the next
+  const sent = useRef<Credentials | null>(null); // sent on this connection, until the Mac says yes or no
+  const waiting = useRef(false); // this connection asked for a sign-in and has none yet
+  const answer = useRef<((c: Credentials) => void) | null>(null);
+  const unlockAsked = useRef(false); // one-tap unlock asked for its password once per page
+  // Set once the hub says there is a screen to connect to: the connection lives from then on, whatever the page
+  // shows (asking to sign in is part of it), until "Reconnect" or the page goes.
+  const [go, setGo] = useState(false);
+  const screen = useRef<HTMLDivElement>(null);
+  const rfb = useRef<RFB | null>(null);
+  // One display of a multi-display Mac (#5685): its arrangement as the node read it, the framebuffer's size as noVNC
+  // sized its canvas, the room the page has for it, and the display chosen for this Mac (null: all of them).
+  const [displays, setDisplays] = useState<MachineDisplay[]>([]);
+  const [fb, setFb] = useState<Size | null>(null);
+  const [stage, setStage] = useState<Size | null>(null);
+  const [choice, setChoice] = useState(() => displayChoice(target.mid));
+  const stageRef = useRef<HTMLElement>(null);
+  const clip = useRef<HTMLDivElement>(null);
+
+  // What the hub says first: why there would be nothing to connect to.
+  useEffect(() => {
+    let gone = false;
+    (async () => {
+      if (!target.token) return setPhase({ kind: "blocked", why: t("screen-screenview.sign_in_first") });
+      try {
+        const { machines } = await api<{ machines: MachineRow[] }>("/machines", { token: target.token });
+        const m = machines.find((x) => x.id === target.mid);
+        if (m) {
+          setName(m.name);
+          setAccount((a) => a || accountOf(m.home));
+        }
+        if (m && !m.online) throw new Error(t("screen-screenview.offline", { name: m.name }));
+        const on = await sharing(target);
+        if (!gone) {
+          setDisplays(machineDisplays(on.displays));
+          setPhase({ kind: "connecting" });
+          setGo(true);
+        }
+      } catch (e) {
+        const why = e instanceof ApiError && e.status === 404 ? t("screen-screenview.not_found")
+          : e instanceof ApiError && e.status === 401 ? (target.embedded ? t("screen-screenview.unauthorized_app") : t("screen-screenview.unauthorized_web"))
+          : errorText(e);
+        if (!gone) setPhase({ kind: "blocked", why });
+      }
+    })();
+    return () => {
+      gone = true;
+    };
+  }, [target]);
+
+  // The connection, once there is something to connect to; again on "Reconnect".
+  useEffect(() => {
+    if (!go || !screen.current) return;
+    ensureSubtleAES(); // an http page has no crypto.subtle, and the ARD sign-in needs AES
+    const r = new RFB(screen.current, screenSocket(window.location, target.mid, target.token), { shared: true });
+    r.viewOnly = true;
+    r.scaleViewport = true;
+    r.resizeSession = false;
+    r.background = "transparent";
+    // noVNC sizes its canvas to the framebuffer (and again when the Mac's displays change); nothing else says the size.
+    const canvas = screen.current.querySelector("canvas");
+    const sized = new MutationObserver(() => {
+      const w = canvas?.width ?? 0, h = canvas?.height ?? 0;
+      if (w > 0 && h > 0) setFb((f) => (f?.w === w && f.h === h ? f : { w, h }));
+    });
+    if (canvas) sized.observe(canvas, { attributes: true, attributeFilter: ["width", "height"] });
+    waiting.current = false;
+    sent.current = null;
+    let askedApp = false;
+    let appSilent: ReturnType<typeof setTimeout> | undefined;
+    const send = (c: Credentials) => {
+      waiting.current = false;
+      sent.current = c;
+      r.sendCredentials({ username: c.account, password: c.password });
+      setPhase({ kind: "connecting" });
+    };
+    const showForm = () => setPhase((p) => (p.kind === "signin" ? p : { kind: "signin" }));
+    answer.current = (c) => {
+      clearTimeout(appSilent);
+      if (waiting.current) send(c);
+    };
+    r.addEventListener("connect", () => {
+      setPhase({ kind: "live" });
+      // One-tap unlock (#1507 a-2): in, so the app hands over the kept password for the lock screen (personaScreen.unlock).
+      if (target.unlock && !unlockAsked.current) {
+        unlockAsked.current = true;
+        toApp({ credentials: "unlock" });
+      }
+      const c = sent.current;
+      sent.current = null;
+      // What worked goes to the app's keychain when "Remember" was on; off, what it kept goes.
+      if (c && canKeep && !c.saved) toApp(c.remember ? { credentials: "worked", account: c.account, password: c.password } : { credentials: "forget" });
+    });
+    r.addEventListener("credentialsrequired", () => {
+      waiting.current = true;
+      const q = queued.current;
+      queued.current = null;
+      if (q) return send(q);
+      if (canKeep && !askedApp) {
+        // The app answers with what it kept (personaScreen.signIn), or null for the form; the form if it says nothing.
+        askedApp = true;
+        appSilent = setTimeout(showForm, 1500);
+        return toApp({ credentials: "wanted" });
+      }
+      showForm();
+    });
+    r.addEventListener("securityfailure", (e) => {
+      const reason = (e as CustomEvent<{ reason?: string }>).detail?.reason;
+      const kept = sent.current?.saved ? sent.current : null;
+      sent.current = null;
+      if (kept) setAccount(kept.account);
+      setPhase({
+        kind: "signin",
+        failed: kept ? t("screen-screenview.kept_password_wrong") : reason ? t("screen-screenview.sign_in_failed", { reason }) : t("screen-screenview.wrong_credentials"),
+      });
+    });
+    r.addEventListener("disconnect", (e) => {
+      const clean = (e as CustomEvent<{ clean: boolean }>).detail?.clean;
+      setPhase((p) => (p.kind === "signin" && p.failed ? p : { kind: "closed", why: clean ? t("screen-screenview.disconnected") : t("screen-screenview.connection_lost") }));
+    });
+    rfb.current = r;
+    return () => {
+      sized.disconnect();
+      clearTimeout(appSilent);
+      answer.current = null;
+      rfb.current = null;
+      r.disconnect();
+    };
+  }, [go, attempt, target, canKeep]);
+
+  useEffect(() => {
+    if (rfb.current) rfb.current.viewOnly = !control;
+  }, [control, phase.kind]);
+
+  // The room for the picture: the page below its bar.
+  useLayoutEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const measure = () => {
+      const { width: w, height: h } = el.getBoundingClientRect();
+      setStage((s) => (s?.w === w && s.h === h ? s : { w, h }));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
+
+  // A framebuffer of another size means the Mac's displays changed (one plugged in or out, another resolution): the
+  // arrangement read before connecting no longer fits it, so ask for the one the node reads now.
+  const lastFb = useRef<Size | null>(null);
+  useEffect(() => {
+    if (!fb) return;
+    const before = lastFb.current;
+    lastFb.current = fb;
+    if (!before || (before.w === fb.w && before.h === fb.h)) return;
+    let gone = false;
+    sharing(target).then(
+      (on) => !gone && setDisplays(machineDisplays(on.displays)),
+      () => {}, // the arrangement already here stays; the layout offers nothing when it does not fit
+    );
+    return () => {
+      gone = true;
+    };
+  }, [fb, target]);
+
+  const offered = useMemo(() => (fb ? layoutDisplays(displays, fb) : []), [displays, fb]);
+  const shown = offered.find((d) => d.id === choice) ?? null;
+  const frame = shown && fb && stage ? framing(stage, fb, shown.frame) : null;
+  const cropped = frame !== null;
+  useEffect(() => (cropped && clip.current ? keepPointerIn(clip.current) : undefined), [cropped]);
+  const choose = (id: string | null) => {
+    setChoice(id);
+    setDisplayChoice(target.mid, id);
+  };
+
+  // In the app (#1343) the app draws the name, the state and "View only" / "Take control" around the page: it hears the phase, and
+  // says "Take control" through window.personaScreen.
+  useEffect(() => {
+    if (!target.embedded) return;
+    toApp({ phase: phase.kind });
+  }, [target.embedded, phase.kind]);
+  useEffect(() => {
+    if (!target.embedded) return;
+    (window as unknown as { personaScreen?: unknown }).personaScreen = {
+      setControl: (on: boolean) => setControl(on),
+      // The app's answer to { credentials: "unlock" }: a key wakes the lock screen and puts the cursor in its password
+      // field, then the password and Return; "View only" again after.
+      unlock: (kept: { password?: string } | null) => {
+        const r = rfb.current;
+        if (!r || !kept?.password) return;
+        const password = kept.password;
+        r.viewOnly = false;
+        r.sendKey(0xffe1, "ShiftLeft");
+        setTimeout(() => {
+          for (const k of keysymsOf(password)) r.sendKey(k, null);
+          r.viewOnly = !controlRef.current;
+        }, 800);
+      },
+      // The app's answer to { credentials: "wanted" }: the Mac's sign-in it kept, or null (the form).
+      signIn: (kept: { account?: string; password?: string } | null) => {
+        if (kept?.account && kept.password) {
+          setAccount(kept.account);
+          answer.current?.({ account: kept.account, password: kept.password, remember: true, saved: true });
+        } else {
+          answer.current = null;
+          setPhase((p) => (p.kind === "signin" ? p : { kind: "signin" }));
+        }
+      },
+    };
+  }, [target.embedded]);
+
+  const signIn = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      const c: Credentials = { account: account.trim(), password, remember: canKeep && remember, saved: false };
+      setPassword("");
+      setPhase({ kind: "connecting" });
+      if (rfb.current && waiting.current) {
+        waiting.current = false;
+        sent.current = c;
+        rfb.current.sendCredentials({ username: c.account, password: c.password });
+        return;
+      }
+      // A refused sign-in closes the connection: a new one takes this when it asks.
+      queued.current = c;
+      setAttempt((n) => n + 1);
+    },
+    [account, password, canKeep, remember],
+  );
+
+  const reconnect = () => {
+    setAttempt((n) => n + 1);
+    setPhase({ kind: "connecting" });
+  };
+
+  const live = phase.kind === "live";
+  return (
+    <div className={cx("flex h-dvh flex-col text-ink", target.embedded ? "bg-transparent" : "bg-canvas")}>
+      {!target.embedded && (
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">
+        {!target.embedded && (
+          <a href={`${BASE}/machines/${encodeURIComponent(target.mid)}`} className="whitespace-nowrap rounded-control px-2 py-1 text-[12.5px] text-ink-2 hover:bg-hover hover:text-ink">
+            {t("screen-screenview.back")}
+          </a>
+        )}
+        <p className="min-w-0 flex-1 truncate text-[13px] font-medium">
+          {t("screen-screenview.title", { name })}
+          <span className="ml-2 text-[11.5px] font-normal text-ink-3">{live ? (control ? t("screen-screenview.in_control") : t("screen-screenview.view_only")) : phaseLabel(phase)}</span>
+        </p>
+        {live && offered.length > 1 && (
+          <Suspense fallback={null}>
+            <DisplayMenu offered={offered} shown={shown?.id ?? null} onChoose={choose} />
+          </Suspense>
+        )}
+        {live && (
+          <div role="group" aria-label={t("screen-screenview.mode_label")} className="flex shrink-0 rounded-control bg-field p-0.5">
+            {[false, true].map((on) => (
+              <button
+                key={String(on)}
+                type="button"
+                aria-pressed={control === on}
+                onClick={() => setControl(on)}
+                className={cx(
+                  "h-7 whitespace-nowrap rounded-[7px] px-3 text-[12px] font-medium transition-colors",
+                  control === on ? "bg-surface text-ink shadow-btn" : "text-ink-2 hover:text-ink",
+                )}
+              >
+                {on ? t("screen-screenview.take_control") : t("screen-screenview.view_only")}
+              </button>
+            ))}
+          </div>
+        )}
+      </header>
+      )}
+      <main ref={stageRef} className="relative min-h-0 flex-1">
+        {/* One display: a box as large as fits shows it, over the whole framebuffer drawn at the same scale (displays.ts). */}
+        <div ref={clip} className={cx("absolute", frame ? "overflow-hidden" : "inset-0", !live && "invisible")} style={frame ? place(frame.clip) : undefined}>
+          <div ref={screen} className={cx("absolute", !frame && "inset-0")} style={frame ? place(frame.inner) : undefined} data-testid="screen" />
+        </div>
+        {!live && (
+          <div className="absolute inset-0 flex items-center justify-center p-6">
+            {phase.kind === "signin" ? (
+              <form onSubmit={signIn} className="flex w-full max-w-[340px] flex-col gap-3 rounded-card bg-surface p-5 shadow-card">
+                <div>
+                  <p className="text-[14px] font-medium">{t("screen-screenview.signin_title")}</p>
+                  <p className="mt-1 text-[12.5px] text-ink-2">
+                    {canKeep && remember ? t("screen-screenview.signin_hint_kept", { name }) : t("screen-screenview.signin_hint", { name })}
+                  </p>
+                </div>
+                {phase.failed && (
+                  <p role="alert" className="text-[12.5px] text-red">
+                    {phase.failed}
+                  </p>
+                )}
+                <input
+                  value={account}
+                  onChange={(e) => setAccount(e.target.value)}
+                  placeholder={t("screen-screenview.account")}
+                  aria-label={t("screen-screenview.account")}
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  className="h-9 rounded-control bg-field px-3 text-[13px] outline-none focus:ring-2 focus:ring-accent/40"
+                />
+                <input
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={t("screen-screenview.password")}
+                  aria-label={t("screen-screenview.password")}
+                  type="password"
+                  autoComplete="current-password"
+                  className="h-9 rounded-control bg-field px-3 text-[13px] outline-none focus:ring-2 focus:ring-accent/40"
+                />
+                {canKeep && (
+                  <label className="flex items-center gap-2 whitespace-nowrap text-[12.5px] text-ink-2">
+                    <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="size-3.5 shrink-0 accent-[var(--accent)]" />
+                    {keepLabel(target.keep)}
+                  </label>
+                )}
+                <button
+                  type="submit"
+                  disabled={!account.trim() || !password}
+                  className="h-9 whitespace-nowrap rounded-control bg-accent text-[13px] font-medium text-white disabled:opacity-45"
+                >
+                  {t("screen-screenview.connect")}
+                </button>
+              </form>
+            ) : (
+              <div className="flex max-w-[360px] flex-col items-center gap-3 text-center">
+                {(phase.kind === "checking" || phase.kind === "connecting") && <Spinner size={18} />}
+                <p className="text-[13px] text-ink-2">{phaseText(phase, name)}</p>
+                {phase.kind === "closed" && (
+                  <button type="button" onClick={reconnect} className="h-8 whitespace-nowrap rounded-control bg-surface px-3 text-[12.5px] font-medium shadow-btn hover:bg-hover">
+                    {t("screen-screenview.reconnect")}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+/** The status of the extension that lets this Mac's screen through, as the hub has it now: cua's computer, else ego's
+ *  browser (#1507), each asked fresh and null while off (404). Throws what to tell the user when there is no screen. */
+async function sharing(target: ScreenTarget): Promise<Computer> {
+  const fresh = async (what: "computer" | "browser") => {
+    try {
+      // the hub asks the Mac for up to 45 s (extmgr/browser.go; computer.go 30 s)
+      return await api<Computer>(`/machines/${encodeURIComponent(target.mid)}/${what}`, { token: target.token, timeout: pastHub(45_000) });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return null;
+      throw e;
+    }
+  };
+  const c = await fresh("computer");
+  const b = c?.enabled ? null : await fresh("browser");
+  const on = c?.enabled ? c : b?.enabled ? b : null;
+  if (!c && !b) throw new Error(t("screen-screenview.no_extension"));
+  if (!on) throw new Error(t("screen-screenview.extension_off"));
+  if (!on.screen_sharing) throw new Error(t("screen-screenview.sharing_off"));
+  return on;
+}
+
+const place = (r: Rect) => ({ left: r.x, top: r.y, width: r.w, height: r.h });
+
+function phaseLabel(p: Phase): string {
+  switch (p.kind) {
+    case "signin":
+      return t("screen-screenview.phase_signin");
+    case "closed":
+    case "blocked":
+      return t("screen-screenview.phase_failed");
+    default:
+      return t("screen-screenview.phase_connecting");
+  }
+}
+
+function phaseText(p: Phase, name: string): string {
+  switch (p.kind) {
+    case "checking":
+      return t("screen-screenview.finding", { name });
+    case "connecting":
+      return t("screen-screenview.connecting", { name });
+    case "blocked":
+    case "closed":
+      return p.why;
+    default:
+      return "";
+  }
+}

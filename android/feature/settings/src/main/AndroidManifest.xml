@@ -1,0 +1,32 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <application>
+        <activity android:name="persona.feature.settings.PairingScanActivity" android:exported="false" android:theme="@android:style/Theme.Material.NoActionBar" />
+        <activity android:name="persona.feature.settings.InstallResultActivity" android:exported="false" android:excludeFromRecents="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity
+            android:name="persona.feature.settings.OAuthRedirectActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <!-- Google's installed-app redirect is <reversed client id>:/oauth2redirect: a custom scheme, no host. -->
+                <data android:scheme="${googleOAuthScheme}" android:path="/oauth2redirect" tools:ignore="AppLinkUrlError" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <!-- Outlook's "Sign in with a Microsoft account": the hub's default redirect URI (server/internal/mail/microsoft.go). -->
+                <data android:scheme="persona-mail-oauth" android:host="outlook" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

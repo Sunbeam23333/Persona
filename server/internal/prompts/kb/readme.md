@@ -1,0 +1,15 @@
+# Persona 知识库
+
+hub 自动维护的数据（说明见仓库 docs/assistant/knowledge.md）。可以直接读、grep；改 summary.md 也可以，下次压缩会接着用。
+
+- chats/<id>/messages/YYYY-MM-DD.md  每个会话每天的全量文字（保留 365 天）
+- chats/<id>/attachments/            附件（保留 30 天）
+- chats/<id>/summary.md              压缩后的上下文；meta.json 里是名称、成员、关联项目、打标
+- people/<id>/                       人：summary.md（是谁、和我的关系）、meta.json
+- projects/<slug>/                   项目：summary.md（目标、现状、下一步）、log.md（时间线）、meta.json
+- docs/ meetings/ events/            文档、会议、日程，各一个 json，带打标和关联项目
+- recordings/<uuid>/                 手机 / 手表录音的转写：transcript.md（带钟点的全文）、summary.md、会议的 minutes.md（纪要）、meta.json（只留最近 14 天，天数可设）
+- topics/<slug>/                     主题：从项目时间线和会话里整理出的知识点（概念、决定、做法、坑、事实、待定），summary.md 按子主题列出，points.json 是原始记录（别手改，改 summary.md 也会被覆盖）
+
+打标：importance P0–P3（重要级），relevance 0–100（与我相关性），tags（自动生成的标签）。
+

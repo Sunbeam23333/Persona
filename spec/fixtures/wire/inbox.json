@@ -1,0 +1,153 @@
+[
+  {
+    "name": "inbox_list",
+    "description": "收件箱列表包含飞书和邮件条目，并移除内部上下文。",
+    "source": [
+      "server/internal/assistant/inbox.go: InboxItem.listed",
+      "server/internal/assistant/inbox_api.go: Service.inboxRoutes",
+      "apple/Shared/InboxModels.swift: InboxItem"
+    ],
+    "derived": true,
+    "decoder": "inbox",
+    "input": {
+      "items": [
+        {
+          "id": "lark:feed_example:10",
+          "source": "lark",
+          "kind": "mention",
+          "account": "feishu",
+          "account_name": "飞书",
+          "title": "示例讨论",
+          "sender": "小王",
+          "preview": "请确认示例。",
+          "count": 1,
+          "started_at": "2026-01-02T03:04:05Z",
+          "updated_at": "2026-01-02T03:04:05Z",
+          "tier": "action",
+          "lark": {
+            "feed_id": "feed_example",
+            "is_group": true,
+            "start_position": "10",
+            "mention_position": "10"
+          },
+          "conversation": {
+            "source": "lark",
+            "id": "feed_example",
+            "start_position": "10",
+            "mention_position": "10"
+          },
+          "agent": {
+            "state": "drafted",
+            "machine_id": "m1",
+            "session_id": "s1",
+            "draft": "已收到示例。"
+          },
+          "mutes": [
+            {
+              "tag": "chat",
+              "value": "feed_example",
+              "name": "示例讨论"
+            }
+          ],
+          "version": "d45aefe6809ea192",
+          "status": "action",
+          "handling": {
+            "owner": "manager",
+            "state": "done",
+            "machine_id": "m1",
+            "session_id": "s1"
+          },
+          "suggestion": {
+            "version": 1,
+            "kind": "reply",
+            "text": "已收到示例。",
+            "handback": false,
+            "at": "2026-01-02T03:04:05Z"
+          },
+          "chain": [
+            {
+              "id": "c1",
+              "at": "2026-01-02T03:04:05Z",
+              "kind": "received",
+              "text": "收到 1 条新消息 · 小王",
+              "count": 1,
+              "sender": "小王",
+              "link": {
+                "type": "source",
+                "position": "10"
+              }
+            },
+            {
+              "id": "c2",
+              "at": "2026-01-02T03:04:05Z",
+              "kind": "triaged",
+              "text": "分拣：需要你",
+              "detail": "需要你"
+            }
+          ]
+        },
+        {
+          "id": "mail:account_example:thread_example:11",
+          "source": "mail",
+          "kind": "mail",
+          "account": "account_example",
+          "account_name": "user@example.com",
+          "title": "示例邮件",
+          "preview": "示例已确认。",
+          "count": 1,
+          "started_at": "2026-01-02T03:04:05Z",
+          "updated_at": "2026-01-02T03:04:05Z",
+          "read": true,
+          "done_at": "2026-01-02T03:04:05Z",
+          "done_by": "user",
+          "mail": {
+            "account_id": "account_example",
+            "mailbox": "INBOX",
+            "uids": [
+              11
+            ],
+            "message_id": "message_example",
+            "from": {
+              "name": "小王",
+              "email": "sender@example.com"
+            },
+            "direct": true,
+            "thread": "thread_example"
+          },
+          "mutes": [
+            {
+              "tag": "sender",
+              "value": "sender@example.com",
+              "name": "小王"
+            }
+          ],
+          "version": "e9cde9aed8019733",
+          "chain": [
+            {
+              "id": "c1",
+              "at": "2026-01-02T03:04:05Z",
+              "kind": "received",
+              "text": "收到 1 封邮件",
+              "count": 1,
+              "link": {
+                "type": "source",
+                "uid": 11
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "accepted": true,
+      "fields": {
+        "/items/0/agent/draft": "已收到示例。",
+        "/items/0/context": null,
+        "/items/0/source": "lark",
+        "/items/1/done_by": "user",
+        "/items/1/mail/uids/0": 11,
+        "/items/1/source": "mail"
+      }
+    }
+  }
+]

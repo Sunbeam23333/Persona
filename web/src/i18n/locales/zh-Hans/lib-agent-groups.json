@@ -1,0 +1,19 @@
+{
+  "by_machine": "按机器",
+  "by_repo": "按仓库",
+  "by_project": "按项目",
+  "by_state": "按状态",
+  "by_todo": "按待办",
+  "by_direction": "按常驻",
+  "seg_todo": "待办",
+  "seg_machine": "机器",
+  "seg_repo": "仓库",
+  "seg_project": "项目",
+  "seg_state": "状态",
+  "seg_direction": "常驻",
+  "state_muted": "已屏蔽",
+  "source_feishu": "飞书群",
+  "source_terminal": "终端",
+  "source_desktop": "桌面端",
+  "open_feishu_topic": "在飞书里打开这个话题"
+}

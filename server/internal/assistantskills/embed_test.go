@@ -1,0 +1,298 @@
+package assistantskills
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+)
+
+func skill(t *testing.T, dir, name, desc string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, name, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	md := "---\nname: " + name + "\ndescription: " + desc + "\n---\n\n# " + name + "\n"
+	if err := os.WriteFile(filepath.Join(dir, name, "SKILL.md"), []byte(md), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func quiet(string, ...any) {}
+
+// The user's skills are linked in, follow their space, and a skill gone from it is unlinked; a directory the user put
+// in the assistant's skills themselves is never touched.
+func TestSyncLinksTheUsersSkills(t *testing.T) {
+	user, dir := t.TempDir(), filepath.Join(t.TempDir(), ".claude", "skills")
+	skill(t, user, "alpha", "first")
+	skill(t, user, "beta", "second")
+	if err := os.MkdirAll(filepath.Join(dir, "beta"), 0o755); err != nil { // the user's own, in place
+		t.Fatal(err)
+	}
+	if err := Sync(dir, user, nil, quiet); err != nil {
+		t.Fatal(err)
+	}
+	if target, err := os.Readlink(filepath.Join(dir, "alpha")); err != nil || target != filepath.Join(user, "alpha") {
+		t.Fatalf("alpha: %q %v", target, err)
+	}
+	if !hasSkill(dir, "alpha") {
+		t.Fatal("alpha is not usable through the link")
+	}
+	if st, err := os.Lstat(filepath.Join(dir, "beta")); err != nil || st.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("beta, a directory of the user's own, was replaced: %v", err)
+	}
+	if err := os.RemoveAll(filepath.Join(user, "alpha")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Sync(dir, user, nil, quiet); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "alpha")); !os.IsNotExist(err) {
+		t.Fatalf("a link to a skill gone from the user's space stayed: %v", err)
+	}
+}
+
+// What an older personad copied in (a skill, with its stamp) moves to the user's space once and is linked back.
+func TestSyncMovesTheOldCopy(t *testing.T) {
+	user, dir := filepath.Join(t.TempDir(), "skills"), t.TempDir()
+	skill(t, dir, "lark-gateway", "Feishu through a Lark gateway")
+	if err := os.WriteFile(filepath.Join(dir, "lark-gateway", "scripts", "ol.sh"), []byte("#!/bin/bash\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, legacyStamp), []byte("abc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var said []string
+	if err := Sync(dir, user, nil, func(f string, a ...any) { said = append(said, f) }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(user, "lark-gateway", "scripts", "ol.sh")); err != nil {
+		t.Fatalf("not moved: %v", err)
+	}
+	if st, err := os.Lstat(filepath.Join(dir, "lark-gateway")); err != nil || st.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("not linked back: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "lark-gateway", "scripts", "ol.sh")); err != nil {
+		t.Fatalf("ol.sh is not reachable where the node looks: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, legacyStamp)); !os.IsNotExist(err) {
+		t.Fatal("the old stamp stayed: the move would be tried again")
+	}
+	if len(said) == 0 {
+		t.Fatal("the move is not logged")
+	}
+}
+
+// The user already has the skill in their space: the old copy goes, theirs is linked.
+func TestSyncOldCopyGivesWayToTheUsers(t *testing.T) {
+	user, dir := t.TempDir(), t.TempDir()
+	skill(t, user, "lark-gateway", "mine")
+	skill(t, dir, "lark-gateway", "old copy")
+	if err := os.WriteFile(filepath.Join(dir, legacyStamp), []byte("abc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Sync(dir, user, nil, quiet); err != nil {
+		t.Fatal(err)
+	}
+	if target, _ := os.Readlink(filepath.Join(dir, "lark-gateway")); target != filepath.Join(user, "lark-gateway") {
+		t.Fatalf("lark-gateway points at %q", target)
+	}
+}
+
+// An extension's skill copied in next to the old stamp stays the extension's: only what the old personad left moves.
+func TestSyncOldCopyLeavesExtensionSkills(t *testing.T) {
+	user, dir := t.TempDir(), t.TempDir()
+	skill(t, dir, "from-extension", "an extension's")
+	if err := os.WriteFile(filepath.Join(dir, "from-extension", pluginStamp), []byte("ext abc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, legacyStamp), []byte("abc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	migrate(dir, user, quiet)
+	if _, err := os.Stat(filepath.Join(user, "from-extension")); !os.IsNotExist(err) {
+		t.Fatal("an extension's skill moved into the user's space")
+	}
+}
+
+// Without the stamp nothing moves: a directory the user put there is theirs.
+func TestNoStampNoMove(t *testing.T) {
+	user, dir := t.TempDir(), t.TempDir()
+	skill(t, dir, "lark-gateway", "placed by hand")
+	if err := Sync(dir, user, nil, quiet); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(user, "lark-gateway")); !os.IsNotExist(err) {
+		t.Fatal("moved a directory personad never put there")
+	}
+}
+
+// A built-in skill is one Persona may redistribute: anything else goes in the user's space.
+func TestBuiltinsAreRedistributable(t *testing.T) {
+	for _, n := range builtinNames() {
+		if Redistributable[n] == "" {
+			t.Errorf("built-in skill %s is not registered as redistributable (embed.go)", n)
+		}
+	}
+}
+
+func TestListAndDescriptions(t *testing.T) {
+	t.Setenv("PERSONA_PLUGIN_SKILLS_DIR", t.TempDir()) // not this machine's plugins' skills
+	user := t.TempDir()
+	skill(t, user, "alpha", `"quoted one"`)
+	if err := os.MkdirAll(filepath.Join(user, "folded"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	md := "---\nname: folded\ndescription: >\n  first line\n  second line\nlicense: MIT\n---\n"
+	if err := os.WriteFile(filepath.Join(user, "folded", "SKILL.md"), []byte(md), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(user, "no-skill-md"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got := List(user, nil)
+	// The user's, then the built-in ones that need no connector (persona-office).
+	if len(got) != 3 || got[0] != (Skill{"alpha", "quoted one", "user"}) || got[1] != (Skill{"folded", "first line second line", "user"}) ||
+		got[2].Name != "persona-office" || got[2].Source != "builtin" || !strings.HasPrefix(got[2].Description, "生成 Word") {
+		t.Fatalf("%+v", got)
+	}
+}
+
+// A built-in skill that needs a connector (Requires) is in while it is signed in on the hub and out once it is not; the
+// user's own skill of the name wins.
+func TestConnectorSkillFollowsItsConnector(t *testing.T) {
+	old := Requires
+	Requires = map[string]string{"persona-office": "example"}
+	t.Cleanup(func() { Requires = old })
+	user, dir := t.TempDir(), t.TempDir()
+	if err := Sync(dir, user, nil, quiet); err != nil {
+		t.Fatal(err)
+	}
+	if hasSkill(dir, "persona-office") || slices.ContainsFunc(List(user, nil), func(s Skill) bool { return s.Name == "persona-office" }) {
+		t.Fatal("the skill is in with its connector not signed in")
+	}
+	if err := Sync(dir, user, []string{"example"}, quiet); err != nil {
+		t.Fatal(err)
+	}
+	if !hasSkill(dir, "persona-office") {
+		t.Fatal("its connector signed in, no skill")
+	}
+	listed := List(user, []string{"example"})
+	if i := slices.IndexFunc(listed, func(s Skill) bool { return s.Name == "persona-office" }); i < 0 || listed[i].Source != "builtin" {
+		t.Fatalf("listed %+v", listed)
+	}
+	if err := Sync(dir, user, nil, quiet); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "persona-office")); !os.IsNotExist(err) {
+		t.Fatalf("signed out, the skill stayed: %v", err)
+	}
+	skill(t, user, "persona-office", "mine")
+	if err := Sync(dir, user, []string{"example"}, quiet); err != nil {
+		t.Fatal(err)
+	}
+	if target, _ := os.Readlink(filepath.Join(dir, "persona-office")); target != filepath.Join(user, "persona-office") {
+		t.Fatalf("the user's skill gave way to the built-in one: %q", target)
+	}
+}
+
+// Telegram's skill was built in until the connector became an extension (#1704): the copy an older personad put in
+// goes, and the extension's skill of the same name comes in, with Telegram still signed in.
+func TestABuiltinSkillNoLongerCarriedGivesWayToAPlugins(t *testing.T) {
+	user, dir, plugins := t.TempDir(), t.TempDir(), t.TempDir()
+	t.Setenv("PERSONA_PLUGIN_SKILLS_DIR", plugins)
+	skill(t, dir, "telegram", "built in")
+	if err := os.WriteFile(filepath.Join(dir, builtinStamp), []byte("0123456789ab persona-office,telegram\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	md := []byte("---\nname: telegram\ndescription: the extension's\n---\n")
+	if _, err := ApplyPlugins(plugins, []PluginSkill{{Name: "telegram", Plugin: "telegram", Digest: "d1", Files: map[string][]byte{"SKILL.md": md}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Sync(dir, user, []string{"telegram"}, quiet); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "telegram", "SKILL.md")); err != nil || !strings.Contains(string(b), "the extension's") {
+		t.Fatalf("telegram: %q %v", b, err)
+	}
+	if !hasSkill(dir, "persona-office") {
+		t.Fatal("the built-in that is still carried went too")
+	}
+}
+
+// The agents Persona starts get the ForAgents skills as a Claude Code plugin: a manifest, the skills with their
+// scripts runnable; written again only when what the binary carries changed.
+func TestWritePlugin(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "agent-plugin")
+	if err := WritePlugin(dir); err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct{ Name, Version string }
+	b, err := os.ReadFile(filepath.Join(dir, ".claude-plugin", "plugin.json"))
+	if err != nil || json.Unmarshal(b, &manifest) != nil || manifest.Name != "persona" || manifest.Version != builtinVersion() {
+		t.Fatalf("manifest %s %v", b, err)
+	}
+	for _, name := range ForAgents {
+		if _, err := os.Stat(filepath.Join(dir, "skills", name, "SKILL.md")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if st, err := os.Stat(filepath.Join(dir, "skills", "persona-office", "scripts", "office.sh")); err != nil || st.Mode()&0o111 == 0 {
+		t.Fatalf("the script is not runnable: %v", err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(dir, "skills")); len(entries) != len(ForAgents) {
+		t.Fatalf("the agents' plugin has %d skills, ForAgents %d: an assistant-only one is in", len(entries), len(ForAgents))
+	}
+	// The same binary: nothing written; another one: written again.
+	marker := filepath.Join(dir, "skills", "persona-office", "marker")
+	os.WriteFile(marker, nil, 0o644)
+	if err := WritePlugin(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatal("written again with nothing changed")
+	}
+	os.WriteFile(filepath.Join(dir, builtinStamp), []byte("older\n"), 0o644)
+	if err := WritePlugin(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("not written again for another binary")
+	}
+	if _, err := os.Stat(dir + ".old"); !os.IsNotExist(err) {
+		t.Fatal("the old copy stayed")
+	}
+}
+
+// The skill's script runs `personad office …` with the node's personad (PERSONA_BIN), or says there is none.
+func TestOfficeScript(t *testing.T) {
+	dir := t.TempDir()
+	if err := copyBuiltin("persona-office", filepath.Join(dir, "skill")); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "personad")
+	os.WriteFile(bin, []byte("#!/bin/sh\necho \"$@\"\n"), 0o755)
+	script := filepath.Join(dir, "skill", "scripts", "office.sh")
+	cmd := exec.Command("sh", script, "docx", "周报.md", "-o", "周报.docx")
+	cmd.Env = []string{"PERSONA_BIN=" + bin, "HOME=" + dir, "PATH=/usr/bin:/bin"}
+	if out, err := cmd.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "office docx 周报.md -o 周报.docx" {
+		t.Fatalf("%v %s", err, out)
+	}
+	cmd = exec.Command("sh", script, "check", "x.docx")
+	cmd.Env = []string{"HOME=" + dir, "PATH=/usr/bin:/bin"}
+	out, err := cmd.CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 3 || !strings.Contains(string(out), "no personad") {
+		t.Fatalf("no personad: %v %s", err, out)
+	}
+}
+
+// hasSkill says whether the assistant directory's skills (dir) include name.
+func hasSkill(dir, name string) bool {
+	_, err := os.Stat(filepath.Join(dir, name, "SKILL.md"))
+	return err == nil
+}

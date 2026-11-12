@@ -1,0 +1,7 @@
+# Persona runtime for DSH: DSH sessions in the Persona apps (docs/integrations/dsh.md). Needs the web profile's session controller.
+# config.interactions: auto (default) | phone | browser — who gets approvals and questions first.
+- insert:
+    - id: persona-dsh-runtime
+      name: persona-dsh-runtime
+      config:
+        interactions: auto

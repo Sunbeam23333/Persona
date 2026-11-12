@@ -1,0 +1,22 @@
+{
+  "no_database": "这个 hub 没有数据库：用不了扩展市场",
+  "token_unreadable": "市场的 token 解不开（hub 的 secret.key 换过？）：重新填一次",
+  "no_market": "没有这个市场",
+  "token_too_long": "token 太长",
+  "duplicate": "已经登记过这个市场",
+  "too_many": "市场太多了：先删掉几个",
+  "no_token": "那个市场没有 token",
+  "address_taken": "另一个市场已经是这个地址",
+  "bad_signature": "市场的签名不对：{err}",
+  "no_package": "没有这台 hub（{platform}）能用的包",
+  "source_needs_linux": "这台 hub 还不能装：这类扩展（源码扩展）只能在运行 Linux 的 hub 上运行。",
+  "source_needs_runtime": "这台 hub 还不能装：这类扩展（源码扩展）要先在 hub 上配置固定版本的源码运行时（扩展管理器 manager.json 里的 extension_runtime）。",
+  "bad_signature_install": "市场的签名不对，先不从它安装或升级：{err}",
+  "not_in_market": "这个市场里没有扩展 {id}",
+  "token_and_token_from": "token 和 token_from 只能给一个",
+  "official_name": "官方扩展",
+  "pin_rotated_pending": "官方签名公钥已更新，目录用新公钥验签通过前，暂不允许安装",
+  "settings_load_failed": "无法加载市场镜像设置，请重试。",
+  "settings_save_failed": "无法保存市场镜像设置，请重试。",
+  "settings_invalid": "镜像 URL 无效。请使用不含凭据、查询或片段的 HTTPS 地址；目录须填写完整 JSON URL。"
+}

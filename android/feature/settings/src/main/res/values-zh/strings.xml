@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_language_title">语言</string>
+    <string name="settings_language_header">App 的语言</string>
+    <string name="settings_language_system">跟随系统</string>
+    <string name="settings_language_system_now">现在是%1$s</string>
+    <string name="settings_language_caption">跟随系统时使用第一首选语言，没有对应翻译时用英文。</string>
+    <string name="settings_model_assistant">助手</string>
+</resources>

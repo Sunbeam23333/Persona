@@ -1,0 +1,63 @@
+package persona.core.data
+
+import persona.core.contracts.SessionKey
+import persona.core.contracts.api.DeliveryState
+import persona.core.contracts.api.DraftSnapshot
+import kotlinx.coroutines.flow.Flow
+
+enum class OutboxState(val wire: String, val delivery: DeliveryState) {
+    Queued("queued", DeliveryState.Queued),
+    Sending("sending", DeliveryState.Sending),
+    WaitingForNetwork("waitingForNetwork", DeliveryState.WaitingForNetwork),
+    Unknown("unknown", DeliveryState.Unknown),
+    Refused("refused", DeliveryState.Refused),
+    Verifying("verifying", DeliveryState.Verifying),
+    Sent("sent", DeliveryState.Sent),
+    NeedsConfirmation("needsReview", DeliveryState.NeedsConfirmation),
+    Cancelled("cancelled", DeliveryState.Rejected),
+    Shown("shown", DeliveryState.Sent),
+}
+
+data class OutboxEntry(
+    val clientMessageId: String,
+    val session: SessionKey,
+    val text: String,
+    val clearDraft: String? = null,
+    val state: OutboxState = OutboxState.Queued,
+    val error: String? = null,
+    val createdAt: Long,
+    val mainTarget: Boolean = false,
+    /** The operation id of the next attempt when it is no longer [clientMessageId] (the hub said none was delivered). */
+    val opId: String? = null,
+    /** The original submission's Persona overrides, kept for every retry and after process restoration. */
+    val launcher: String? = null,
+    val model: String? = null,
+    /** It carries out the session's waiting launcher switch ([persona.core.contracts.api.MessageSender.sendApplyingSwitch]). */
+    val applySwitch: Boolean = false,
+) {
+    val operationId: String get() = opId ?: clientMessageId
+}
+
+/** All methods operate on exactly one pairing scope. */
+interface OutboxStore {
+    val entries: Flow<List<OutboxEntry>>
+    /** Persist without clearing an editor whose revision is unknown. */
+    suspend fun enqueue(entry: OutboxEntry)
+    /** Compare the draft revision, persist the message and clear that draft in one transaction. */
+    suspend fun enqueueDraft(entry: OutboxEntry, draft: DraftSnapshot?) {
+        check(draft == null) { "Versioned drafts are not supported by this store" }
+        enqueue(entry)
+    }
+    suspend fun mainConversation(): SessionKey? = null
+    suspend fun claimMainCreation(): Boolean = error("Main conversation creation is not supported by this store")
+    suspend fun bindMainConversation(session: SessionKey): Unit = error("Main conversation binding is not supported by this store")
+    /** Gives back an unbound [claimMainCreation]: the hub refused to start it, so the next try asks again. */
+    suspend fun releaseMainCreation() = Unit
+    /** Unbinds [session] if it is the bound main conversation (it was put away); messages already bound to it stay. */
+    suspend fun forgetMainConversation(session: SessionKey) = Unit
+    suspend fun transition(id: String, from: Set<OutboxState>, to: OutboxState, error: String? = null): Boolean
+    /** [transition], and the message's next attempt goes under [opId]. */
+    suspend fun transition(id: String, from: Set<OutboxState>, to: OutboxState, error: String?, opId: String): Boolean =
+        throw UnsupportedOperationException("Operation ids are not supported by this store")
+    suspend fun recoverInterrupted()
+}

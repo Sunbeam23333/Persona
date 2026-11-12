@@ -1,0 +1,54 @@
+name: Scripts and docs CI
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: scripts-${{ github.repository }}-${{ github.ref_name }}-scripts
+  cancel-in-progress: true
+jobs:
+  scripts:
+    name: Scripts and guards shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        shard: [0, 1]
+    env:
+      CI_PYTHON_SHARD_INDEX: ${{ matrix.shard }}
+      CI_PYTHON_SHARD_COUNT: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: |
+            server/go.sum
+            sdk/go/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: scripts/ci/requirements.txt
+      - name: Install script validation dependencies
+        run: python3 -m pip install -r scripts/ci/requirements.txt
+      - name: Expose the Swift toolchain's plist converter
+        run: |
+          swift_bin="$(dirname "$(readlink -f "$(command -v swift)")")"
+          if [ ! -x "$swift_bin/plutil" ] && [ -x /usr/share/swift/usr/bin/plutil ]; then
+            swift_bin=/usr/share/swift/usr/bin
+          fi
+          "$swift_bin/plutil" -help >/dev/null
+          echo "$swift_bin" >> "$GITHUB_PATH"
+      - name: Install workflow validator
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - name: Scripts and docs checks
+        run: scripts/ci/scripts.sh

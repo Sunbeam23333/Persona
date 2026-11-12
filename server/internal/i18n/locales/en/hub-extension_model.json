@@ -1,0 +1,16 @@
+{
+  "conflicting_markets": "The same extension requires different source marketplaces",
+  "root_version_constraint": "The main package version does not satisfy its dependency constraints",
+  "unstable_plan": "The dependency plan cannot stabilize; check its version constraints",
+  "all_version_constraints": "No marketplace version satisfies all of {ranges}",
+  "market_trust_changed": "The marketplace address or trusted public key changed after preview; preview again",
+  "download_plan_mismatch": "The downloaded manifest does not match the complete plan",
+  "market_not_registered": "Marketplace {spec} isn’t added",
+  "not_in_markets": "None of the added marketplaces has it",
+  "unresolved": "{id} ({why})",
+  "too_deep": "dependencies too deep",
+  "list_separator": ", ",
+  "has_dependents": "These extensions use it: {names}. Turn them off too?",
+  "read_only": "Extension “{name}” is set in manager.json. Turn it off there first",
+  "pack_member_not_on": "Couldn’t turn “{name}” back on: {error}"
+}

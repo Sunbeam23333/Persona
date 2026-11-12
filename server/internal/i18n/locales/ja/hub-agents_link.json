@@ -1,0 +1,10 @@
+{
+  "question": "質問があります",
+  "plan": "プランの承認待ち",
+  "permission": "許可が必要です",
+  "permission_for": "許可が必要です：{summary}",
+  "elicitation": "MCPのリクエストが対応待ち",
+  "screen": "ターミナルで対応が必要です",
+  "plan_for": "プランの承認待ち：{plan}",
+  "more_questions": "{question}（ほかに{count}問）"
+}

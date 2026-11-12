@@ -1,0 +1,57 @@
+# The methods of hub.Store. Kept by TestHubStoreStaysSmall (hub/architecture_guard_test.go): business tables are the
+# manager's, see docs/server/architecture.md「The hub is only a communication center」. Edit by hand, one method a line.
+CreateLockTest
+LockTest
+DueLockTests
+NextLockTestDue
+AttemptLockTest
+ReceiveLockTest
+RecoverLockTests
+PruneLockTests
+InsertDeviceSession
+UpdateDeviceSessionHeartbeat
+FinishDeviceSession
+StopDeviceSessions
+PruneDeviceSessions
+DeviceSessions
+BeginClientOp
+ClientOp
+FinishClientOp
+RecoverClientOps
+CleanupClientOps
+ReplacePhoneTools
+PhoneTools
+ClaimSend
+SettleSend
+UpsertDevice
+Devices
+DeleteDevice
+DeleteDeviceIfCurrent
+# The hub owns push registration retirement and delivery liveness, not manager data.
+ReconcilePushDevices
+SetDevicePrefs
+LiveActivities
+SaveLiveActivity
+# Atomic push delivery budget only; no manager business state or device registration fields.
+ClaimLiveActivityStart
+Setting
+PutSetting
+TakeSetting
+CreateDeviceToken
+DeviceTokenByHash
+DeviceTokens
+RevokeDeviceToken
+TouchDeviceToken
+CreatePairToken
+PairTokenByHash
+RedeemPairToken
+
+# Durable delivery receipts for confirmed phone writes; phone data stays on the phone.
+EnqueuePhoneWrite
+PhoneWrites
+QueuedPhoneWrites
+ClaimPhoneWrite
+FinishPhoneWrite
+CancelPhoneWrite
+RecoverPhoneWrites
+FindQueuedPhoneWrite

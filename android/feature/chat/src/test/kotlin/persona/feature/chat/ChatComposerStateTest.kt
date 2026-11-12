@@ -1,0 +1,132 @@
+package persona.feature.chat
+
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import org.junit.Assert.*
+import org.junit.Test
+import persona.core.contracts.HubScope
+import persona.core.contracts.JsonCodec
+import persona.core.contracts.SessionKey
+import persona.core.contracts.api.*
+import kotlinx.serialization.encodeToString
+
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [35])
+class ChatComposerStateTest {
+    private val res = ApplicationProvider.getApplicationContext<Context>().resources
+    @Test fun structuredDraftRestoresPendingInvalidAndUploadedFilesAndKeepsOriginalHistory() {
+        val version = DraftSessionVersion("original", "pane")
+        val draft = ChatComposerDraft("检查附件", listOf(
+            ComposerAttachment("image", "image.jpg", "content://example.com/image", true,
+                size = 123, uploadState = DraftUploadState.Uploading),
+            ComposerAttachment("file", "notes.txt", "content://example.com/file", false,
+                "/tmp/notes.txt", size = 456, uploadState = DraftUploadState.Uploaded),
+            ComposerAttachment("invalid", "missing.txt", "content://example.com/missing", false,
+                error = "附件已失效", size = 789, uploadState = DraftUploadState.Invalid),
+        ), version)
+        val stored = JsonCodec.encodeToString(draft.storedAttachments())
+        val snapshot = DraftSnapshot(HubScope("hub", "pairing"), DraftKey.Chat(SessionKey("machine", "session")),
+            draft.text, 7, JsonCodec.decodeFromString(stored), version)
+        val state = ChatComposerState(snapshot.composerDraft())
+        assertEquals(draft, state.draft)
+        assertFalse(state.ready)
+        state.currentSessionVersion = version
+        assertFalse(state.oldVersion)
+        state.currentSessionVersion = version.copy(replaced = true)
+        assertTrue(state.oldVersion)
+        state.currentSessionVersion = DraftSessionVersion("replacement", "pane")
+        assertTrue(state.oldVersion)
+        state.insert("补充", false)
+        assertEquals(version, state.draft.sessionVersion)
+        state.attachments = state.attachments.filter { it.id == "file" }
+        assertTrue(state.ready)
+        assertTrue(state.message().endsWith("/tmp/notes.txt"))
+        state.clearIfUnchanged(state.draft)
+        state.insert("新草稿", false)
+        assertFalse(state.oldVersion)
+    }
+
+    @Test fun insertsAtSelectionAndRetainsDraftUntilAllUploadsSucceed() {
+        val state = ChatComposerState(ChatComposerDraft("看这里"))
+        state.value = TextFieldValue("看这里", TextRange(1, 3))
+        state.insert(quoteComposerPath("/tmp/a'b c.txt"), true)
+        assertEquals("看 '/tmp/a'\\''b c.txt'", state.value.text)
+        state.insert("末尾", false)
+        assertTrue(state.value.text.endsWith(" 末尾"))
+        state.attachments = listOf(ComposerAttachment("photo", "照片", "content://example.com/photo", true, error = "上传失败"))
+        assertFalse(state.ready)
+        assertThrows(IllegalStateException::class.java) { state.message() }
+        assertTrue(state.value.text.contains("看"))
+        state.attachments = state.attachments.map { it.copy(path = "/tmp/photo.jpg", error = null) }
+        assertTrue(state.message().endsWith("<attached_images>\n/tmp/photo.jpg\n</attached_images>"))
+        val restored = ChatComposerState().apply { editMessage(state.message()) }
+        assertEquals(state.message(), restored.message())
+        assertFalse(composerMessagePreview(state.message(), "[图片]").contains("<attached_images>"))
+        val sent = state.draft
+        state.insert("补充", false)
+        state.clearIfUnchanged(sent)
+        assertTrue(state.hasContent)
+        state.clearIfUnchanged(state.draft)
+        assertFalse(state.hasContent)
+    }
+
+    @Test fun photosAloneSayPleaseLookAndKeepTheirTag() {
+        val photo = ComposerAttachment("photo", "photo.jpg", "content://example.com/photo", true, "/tmp/photo.jpg",
+            uploadState = DraftUploadState.Uploaded)
+        val tag = "\n\n<attached_images>\n/tmp/photo.jpg\n</attached_images>"
+        assertEquals("请看图片$tag", ChatComposerState(ChatComposerDraft("", listOf(photo))).apply { photosOnlyText = "请看图片" }.message())
+        assertEquals("请看图片$tag", ChatComposerState(ChatComposerDraft("  \n", listOf(photo))).apply { photosOnlyText = "请看图片" }.message())
+        assertEquals("看这里$tag", ChatComposerState(ChatComposerDraft("看这里", listOf(photo))).message())
+        // A file is something to say already; nothing but text is unchanged.
+        val file = ComposerAttachment("file", "notes.txt", "content://example.com/file", false, "/tmp/notes.txt",
+            uploadState = DraftUploadState.Uploaded)
+        assertEquals("/tmp/notes.txt$tag", ChatComposerState(ChatComposerDraft("", listOf(file, photo))).message())
+        assertEquals("只有字", ChatComposerState(ChatComposerDraft("只有字")).message())
+        // Editing it again keeps the same message, words and photo.
+        val sent = ChatComposerState(ChatComposerDraft("", listOf(photo))).apply { photosOnlyText = "请看图片" }.message()
+        val restored = ChatComposerState().apply { editMessage(sent) }
+        assertEquals("请看图片", restored.value.text)
+        assertEquals(sent, restored.message())
+    }
+
+    @Test fun filesOverTheLimitAreRefusedWhenPicked() {
+        assertEquals("「录屏.mov」超过 200 MB，传不了", oversizeReason("录屏.mov", MAX_COMPOSER_FILE_BYTES + 1, res))
+        assertNull(oversizeReason("录屏.mov", MAX_COMPOSER_FILE_BYTES, res))
+        // An unknown size is counted while the file is staged instead.
+        assertNull(oversizeReason("录屏.mov", null, res))
+    }
+
+    @Test fun thumbnailsCoverTheirSquareWithoutEnlarging() {
+        assertEquals(176.0 / 3000, thumbnailScale(4000, 3000, 176), 1e-9)
+        assertEquals(176.0 / 1000, thumbnailScale(1000, 4000, 176), 1e-9)
+        assertEquals(1.0, thumbnailScale(120, 80, 176), 0.0)
+        assertEquals(1.0, thumbnailScale(0, 80, 176), 0.0)
+    }
+
+    @Test fun photoThumbnailsShowWhereTheUploadIs() {
+        val photo = ComposerAttachment("photo", "photo.jpg", "content://example.com/photo", true)
+        val service = object : ChatComposerService {
+            override val deliveries = kotlinx.coroutines.flow.MutableStateFlow(emptyMap<String, ComposerDelivery>())
+            override suspend fun upload(session: SessionKey, name: String, file: java.io.File) = "/tmp/$name"
+            override suspend fun interrupt(session: SessionKey) = Unit
+            override suspend fun retryRefused(clientMessageId: String, clearDraft: Boolean) = ComposerDelivery(DeliveryState.Sending)
+        }
+        assertEquals(persona.core.designsystem.AttachmentState.Uploading, photo.thumbnailState(service))
+        assertEquals(persona.core.designsystem.AttachmentState.Waiting, photo.thumbnailState(null))
+        assertEquals(persona.core.designsystem.AttachmentState.Uploading,
+            photo.copy(uploadState = DraftUploadState.Uploading).thumbnailState(null))
+        assertEquals(persona.core.designsystem.AttachmentState.Ready,
+            photo.copy(path = "/tmp/photo.jpg", uploadState = DraftUploadState.Uploaded).thumbnailState(service))
+        assertEquals(persona.core.designsystem.AttachmentState.Failed,
+            photo.copy(error = "上传失败", uploadState = DraftUploadState.Failed).thumbnailState(service))
+        assertEquals(persona.core.designsystem.AttachmentState.Invalid,
+            photo.copy(error = "附件已失效", uploadState = DraftUploadState.Invalid).thumbnailState(service))
+        // Restored from a sent message: only on the computer, nothing left to upload.
+        assertEquals(persona.core.designsystem.AttachmentState.Ready, photo.copy(uri = "", path = "/tmp/photo.jpg").thumbnailState(service))
+    }
+}

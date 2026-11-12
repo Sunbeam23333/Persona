@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_language_title">言語</string>
+    <string name="settings_language_header">アプリの言語</string>
+    <string name="settings_language_system">システムと同じ</string>
+    <string name="settings_language_system_now">現在は%1$s</string>
+    <string name="settings_language_caption">「システムと同じ」では、第一優先言語に翻訳があればその言語を、なければ英語を使います。</string>
+    <string name="settings_model_assistant">アシスタント</string>
+</resources>

@@ -1,0 +1,8 @@
+{
+  "failed": "Not sent: {error}",
+  "clear_and_send": "Clear and send",
+  "retry": "Retry",
+  "delete": "Delete",
+  "deleted": "Message deleted",
+  "undo": "Undo"
+}

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English is the fallback for every language the app does not have (docs/protocol/i18n.md); values-zh and values-ja hold the same keys. -->
+<resources>
+    <string name="settings_language_title">Language</string>
+    <string name="settings_language_header">App language</string>
+    <string name="settings_language_system">Match system</string>
+    <string name="settings_language_system_now">Currently %1$s</string>
+    <!-- Each language in its own name, the same in every language. -->
+    <string name="settings_language_caption">Match system uses your first preferred language when a translation is available; otherwise it uses English.</string>
+    <string name="settings_model_assistant">Assistant</string>
+</resources>

@@ -1,0 +1,22 @@
+{
+  "rename": "Rename…",
+  "title_placeholder": "Chat title",
+  "renamed": "Renamed",
+  "rename_failed": "Couldn't rename: {error}",
+  "archive": "Archive",
+  "archived": "Archived “{title}”",
+  "undo": "Undo",
+  "unarchived": "Unarchived “{title}”",
+  "undo_failed": "Couldn't undo: {error}",
+  "copy_id": "Copy session ID",
+  "end": "End…",
+  "end_confirm": "Confirm end",
+  "ended": "Chat ended; its history is kept",
+  "end_failed": "Couldn't end the chat: {error}",
+  "actions": "Chat actions",
+  "make_leader": "Pin",
+  "end_leader": "Unpin",
+  "leader_made": "Pinned “{title}”",
+  "leader_ended": "Unpinned “{title}”: its tasks keep their lead",
+  "leader_failed": "Couldn't change it: {error}"
+}

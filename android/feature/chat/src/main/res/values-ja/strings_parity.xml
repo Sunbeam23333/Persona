@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chat_plan_approve_stepwise">承認して各ステップを確認</string>
+    <string name="chat_menu_fork">新しいチャットに分岐</string>
+    <string name="chat_menu_forked">新しいチャットに分岐しました</string>
+    <string name="chat_menu_fork_failed">分岐できませんでした：%1$s</string>
+    <string name="chat_menu_rewind">ここまで戻す</string>
+    <string name="chat_menu_rewind_blocked">ここまで戻す（%1$s）</string>
+    <string name="chat_rewind_title">このメッセージの前まで戻す</string>
+    <string name="chat_rewind_conversation">会話のみ</string>
+    <string name="chat_rewind_code_and_conversation">コードと会話</string>
+    <string name="chat_rewind_confirm_code">コードの巻き戻しを確定</string>
+    <string name="chat_rewind_confirm_code_note">このメッセージ以降に変更したファイルも元に戻ります。</string>
+    <string name="chat_rewind_block_claude_only">Claudeのみ</string>
+    <string name="chat_rewind_block_working">作業中</string>
+    <string name="chat_rewind_block_needs_you">回答待ち</string>
+    <string name="chat_rewind_block_offline">停止中</string>
+    <string name="chat_rewind_hub_unsupported">このハブはまだ巻き戻しに対応していません。更新してください。</string>
+    <string name="chat_rewind_needs_full_device">巻き戻しにはフルアクセスのデバイスが必要です。</string>
+    <string name="chat_rewind_done_conversation">会話を巻き戻しました</string>
+    <string name="chat_rewind_done_code_and_conversation">コードと会話を巻き戻しました</string>
+    <string name="chat_rewind_done_no_code_changes">会話を巻き戻しました（このメッセージ以降のコード変更はありません）</string>
+    <string name="chat_rewind_no_text">このメッセージには文字がないため、巻き戻せません。</string>
+    <string name="chat_rewind_input_kept">巻き戻しましたが、コンピューター側のClaudeの入力欄にこのメッセージが残っています。</string>
+    <string name="chat_rewind_failed">巻き戻せませんでした：%1$s</string>
+    <string name="chat_rewind_running">巻き戻し中…</string>
+    <string name="chat_tool_open_subagent">サブエージェントを見る</string>
+    <string name="chat_tool_no_answer">回答なし</string>
+    <string name="chat_computer_pill_opens">ステップを表示</string>
+</resources>

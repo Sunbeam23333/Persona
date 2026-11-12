@@ -1,0 +1,17 @@
+{
+  "needs_title": "{name} 需要你",
+  "finished_title": "{name} 做完了",
+  "needs_body": "Agent 停下来等你处理",
+  "finished_body": "Agent 做完了",
+  "question_title": "{name} 在问你",
+  "plan_title": "{name}：计划等你审批",
+  "permission_title": "{name} 需要你授权",
+  "screen_title": "{name} 在终端里等你",
+  "elicitation_title": "{name} 有 MCP 请求等你处理",
+  "allow_failed": "没能允许",
+  "deny_failed": "没能拒绝",
+  "finished_batch_title": "{count} 个任务做完了 · {names}",
+  "finished_batch_more": "{names} 等",
+  "finished_batch_body": "点开看总览",
+  "finished_batch_separator": "、"
+}

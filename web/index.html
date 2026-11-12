@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- interactive-widget: Chrome on Android shrinks the page for the soft keyboard, so 100dvh is what is above it -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex" />
+    <!-- The hub writes the sub-path a reverse proxy serves it under here (X-Forwarded-Prefix, docs/web/web.md "Sub-path"):
+         the bundle's files and the links below are relative to it, and lib/base.ts reads it for everything else. -->
+    <base href="/" />
+    <link rel="icon" href="app-icon-64.png" type="image/png" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="app-icon-dark-64.png" type="image/png" media="(prefers-color-scheme: dark)" />
+    <!-- Installable as an app (PWA, docs/web/web.md "Install as an app"). The theme colours are --page of styles.css. -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <meta name="theme-color" content="#fafafb" media="(prefers-color-scheme: light)" data-scheme="light" />
+    <meta name="theme-color" content="#17181a" media="(prefers-color-scheme: dark)" data-scheme="dark" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Persona" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>Persona</title>
+    <!-- --page, light and dark: the page before the CSS bundle is in (the script below sets .dark first) -->
+    <style>html{background:#fafafb}html.dark{background:#17181a}</style>
+    <script src="compatibility-bootstrap.js"></script>
+    <script>
+      // Pick the theme before the first paint so a dark page never flashes white.
+      try {
+        var t = localStorage.getItem("persona.theme") || "system";
+        var dark = t === "dark" || (t === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+        // A theme picked in Settings also colours the browser's / installed app's bar (views/theme.ts does the same later).
+        if (t !== "system") {
+          document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
+            m.media = m.dataset.scheme === t ? "all" : "not all";
+          });
+        }
+        // text size (src/ui/look.ts) too, so the first paint is at its size.
+        var size = localStorage.getItem("persona.text-size");
+        if (size === "small" || size === "large") document.documentElement.dataset.textSize = size;
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <!-- 100dvh: the visible height with the browser's bars, not the tallest one (100vh hides the bottom on phones) -->
+    <div id="root" style="height: 100dvh"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

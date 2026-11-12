@@ -1,0 +1,22 @@
+{
+  "rename": "名前を変更…",
+  "title_placeholder": "チャットのタイトル",
+  "renamed": "名前を変更しました",
+  "rename_failed": "名前を変更できませんでした：{error}",
+  "archive": "アーカイブ",
+  "archived": "「{title}」をアーカイブしました",
+  "undo": "元に戻す",
+  "unarchived": "「{title}」のアーカイブを解除しました",
+  "undo_failed": "元に戻せませんでした：{error}",
+  "copy_id": "セッション ID をコピー",
+  "end": "終了…",
+  "end_confirm": "終了を確認",
+  "ended": "チャットを終了しました。履歴は残ります",
+  "end_failed": "チャットを終了できませんでした：{error}",
+  "actions": "チャットの操作",
+  "make_leader": "常駐にする",
+  "end_leader": "常駐をやめる",
+  "leader_made": "「{title}」を常駐にしました",
+  "leader_ended": "「{title}」の常駐をやめました。任せた仕事はそのままです",
+  "leader_failed": "変更できませんでした：{error}"
+}

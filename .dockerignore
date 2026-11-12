@@ -1,0 +1,32 @@
+# Only server/, web/, deploy/docker/, the shared cases the web tests read (spec/fixtures/), the extension schema
+# the web build uses (schema/extension/) and the runtime packages' sources (integrations/, go generate) go into the hub
+# image (Dockerfile).
+*
+!server/
+!web/
+!deploy/docker/
+!integrations/agent-sdk/
+!integrations/dsh/
+!integrations/paseo/
+!integrations/pi/
+!integrations/runtime-sdk/
+# the extension SDK's wire types: server/go.mod replaces its module with ../sdk/go (Dockerfile)
+!sdk/go/
+# the shared cases the web app's tests import: the web build's tsc checks the tests too (Dockerfile)
+!spec/fixtures/
+# the extension schema and its examples: the web app builds them in and its tests import them (Dockerfile)
+!schema/extension/
+integrations/**/node_modules/
+server/bin/
+server/internal/hub/webdist/*
+!server/internal/hub/webdist/README.md
+web/node_modules/
+web/dist/
+web/public/pake/client.wasm
+web/public/pake/wasm_exec.js
+web/public/pake/THIRD_PARTY_NOTICES.txt
+# A hub run from this folder: its secrets and data (docs/operations/docker.md).
+deploy/docker/.env
+deploy/docker/data/
+deploy/docker/postgres/
+**/.DS_Store

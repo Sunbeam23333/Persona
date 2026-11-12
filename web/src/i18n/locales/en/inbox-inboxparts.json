@@ -1,0 +1,17 @@
+{
+  "source_lark": "Lark",
+  "source_mail": "Mail",
+  "draft_title": "Reply drafted by your AI twin",
+  "draft_edited": "Edited",
+  "edit": "Edit",
+  "draft_expand": "Show all",
+  "draft_collapse": "Show less",
+  "send_draft": "Send the reply your AI twin drafted",
+  "send": "Send",
+  "agent_queued": "AI twin is queued",
+  "agent_working": "AI twin is working on it",
+  "agent_working_task": "AI twin is working on it: {task}",
+  "status_unset": "Not set",
+  "status_value": "{name}: {value}",
+  "status_change": "{name}: {value}. Click to change"
+}

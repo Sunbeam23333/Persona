@@ -1,0 +1,259 @@
+package persona.feature.chat
+
+import androidx.annotation.StringRes
+import android.content.Context
+import android.graphics.Rect
+import android.os.Message
+import android.view.ActionMode
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.webkit.*
+import java.util.concurrent.Executors
+import org.json.JSONTokener
+import kotlinx.coroutines.CompletableDeferred
+
+/** Owned by one chat host; never retains a departed activity or a different account. */
+internal class ChatWebViewPool(private val context: Context) {
+    /** At most this many pages live (each is a renderer): the one on screen and up to three preloaded links. */
+    private val limit = 4
+    private val pages = LinkedHashMap<String, ChatSelectionWebView>(limit, 0.75f, true)
+    private var active: ChatSelectionWebView? = null
+    private val speculative = mutableSetOf<String>()
+    private val popups = mutableSetOf<WebView>()
+    private val startupExecutor = Executors.newSingleThreadExecutor()
+    private var started = false
+    private val startup = CompletableDeferred<Unit>()
+
+    suspend fun warmUp() {
+        if (!started) {
+            started = true
+            WebViewCompat.startUpWebView(context.applicationContext, WebViewStartUpConfig.Builder(startupExecutor).build(),
+                object : WebViewOutcomeReceiver<WebViewStartUpResult, WebViewStartupException> {
+                    override fun onResult(result: WebViewStartUpResult) { startup.complete(Unit) }
+                    override fun onError(error: WebViewStartupException) { startup.complete(Unit) }
+                })
+        }
+        startup.await()
+    }
+
+    fun acquire(url: String): ChatSelectionWebView {
+        val view = pages[url] ?: create().also { pages[url] = it; if (url in noCache) it.settings.cacheMode = WebSettings.LOAD_NO_CACHE; it.loadUrl(url) }
+        active?.takeIf { it !== view }?.let { mute(it, true); it.onPause() }
+        active = view
+        if (speculative.remove(url)) view.loadUrl(url)
+        mute(view, false)
+        view.onResume()
+        trim()
+        return view
+    }
+
+    /**
+     * Drops the page kept for [url]: a forwarded port's address is the same every time it opens, and the dev server
+     * behind it has moved on (docs/operations/ports.md, iOS #1934), so it loads anew, without the disk cache.
+     */
+    fun forget(url: String) {
+        noCache += url
+        speculative.remove(url)
+        val view = pages[url] ?: return
+        // The one on screen reloads in place; one kept aside goes, and the next acquire loads it anew.
+        if (view === active) { view.settings.cacheMode = WebSettings.LOAD_NO_CACHE; if (view.loadProgress >= 100) view.reload() }
+        else { pages.remove(url); (view.parent as? ViewGroup)?.removeView(view); view.destroy() }
+    }
+
+    private val noCache = mutableSetOf<String>()
+
+    @androidx.annotation.OptIn(markerClass = [Profile.ExperimentalUrlPrefetch::class])
+    fun preload(url: String) {
+        if (pages.containsKey(url)) return
+        val view = create()
+        pages[url] = view
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.PRERENDER_WITH_URL)) {
+            speculative.add(url)
+            WebViewCompat.prerenderUrlAsync(view, url, null, context.mainExecutor, object : PrerenderOperationCallback {
+                override fun onPrerenderActivated() = Unit
+                override fun onError(error: PrerenderException) {
+                    if (pages[url] === view && speculative.remove(url)) view.loadUrl(url)
+                }
+            })
+        } else view.loadUrl(url)
+        mute(view, true)
+        view.onPause()
+        trim()
+    }
+
+    fun release(view: ChatSelectionWebView) {
+        if (view !in pages.values) return
+        view.onPick = null; view.onExternal = null
+        mute(view, true)
+        (view.parent as? ViewGroup)?.removeView(view)
+        view.onPause()
+        if (active === view) active = null
+    }
+
+    private fun trim() {
+        while (pages.size > limit) {
+            val entry = pages.entries.firstOrNull { it.value !== active } ?: return
+            pages.remove(entry.key)
+            speculative.remove(entry.key)
+            entry.value.destroy()
+        }
+    }
+
+    /**
+     * Memory is short (the app went to the background, or the system asks): every page not on screen goes. Each one
+     * is a live renderer; opening its link again loads it anew.
+     */
+    fun trimMemory() {
+        val drop = pages.entries.filter { it.value !== active && it.value.parent == null }
+        drop.forEach { (url, view) -> pages.remove(url); speculative.remove(url); view.destroy() }
+    }
+
+    /** A renderer that crashed or was killed takes only its page with it: forgotten here, shown as gone, made anew on reopening. */
+    private fun dropGone(view: ChatSelectionWebView) {
+        pages.entries.firstOrNull { it.value === view }?.let { pages.remove(it.key); speculative.remove(it.key) }
+        if (active === view) active = null
+        view.gone = true
+        view.onPick = null; view.onExternal = null
+        (view.parent as? ViewGroup)?.removeView(view)
+        view.destroy()
+    }
+
+    @Suppress("SetJavaScriptEnabled")
+    private fun create() = ChatSelectionWebView(context).apply {
+        settings.javaScriptEnabled = true
+        settings.domStorageEnabled = true
+        settings.allowFileAccess = false
+        settings.allowContentAccess = false
+        settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        // A page seen before paints from the disk cache at once (iOS returnCacheDataElseLoad); later loads are normal.
+        settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+        settings.setSupportMultipleWindows(true)
+        settings.javaScriptCanOpenWindowsAutomatically = false
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+            WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
+        }
+        // Logins embedded in a page (a sign-in frame from another site) need its cookies; every page shares the store.
+        CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+        val page = this
+        webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val target = request.url.toString()
+                if (ChatLinks.webUrl(target) != null) return false
+                // Another app's link (mailto:, tel:, intent:): only for a tap on a page that is on screen, and only after
+                // asking. Preloaded pages and scripts cannot start apps; this app's own persona: links never come from a page.
+                if (ChatLinks.kind(target) == ChatLinkKind.External && request.hasGesture() && view.parent != null) page.onExternal?.invoke(target)
+                else if (request.isForMainFrame) failure = view.context.getString(R.string.chat_web_cannot_open)
+                return true
+            }
+            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                failure = null; currentUrl = url.orEmpty(); loadProgress = 0
+            }
+            override fun onPageFinished(view: WebView, url: String?) {
+                currentUrl = url.orEmpty(); pageTitle = view.title.orEmpty(); loadProgress = 100
+                if (view.settings.cacheMode != WebSettings.LOAD_NO_CACHE) view.settings.cacheMode = WebSettings.LOAD_DEFAULT
+            }
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                this@ChatWebViewPool.dropGone(page)
+                return true
+            }
+            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                if (request.isForMainFrame) failure = view.context.getString(R.string.chat_web_load_failed)
+            }
+            override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
+                if (request.isForMainFrame) failure = view.context.getString(R.string.chat_web_unreachable)
+            }
+        }
+        webChromeClient = object : WebChromeClient() {
+            override fun onProgressChanged(view: WebView, value: Int) { loadProgress = value }
+            override fun onReceivedTitle(view: WebView, title: String?) { pageTitle = title.orEmpty() }
+            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
+                if (!isUserGesture) return false
+                // Route target=_blank back to this view without handing off to another app.
+                val popup = WebView(context)
+                popups.add(popup)
+                popup.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                        ChatLinks.webUrl(request.url.toString())?.let { this@apply.loadUrl(it) }
+                        popup.post { if (popups.remove(popup)) popup.destroy() }
+                        return true
+                    }
+                }
+                (resultMsg.obj as WebView.WebViewTransport).webView = popup
+                resultMsg.sendToTarget()
+                return true
+            }
+        }
+    }
+
+    private fun mute(view: WebView, muted: Boolean) {
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.MUTE_AUDIO)) WebViewCompat.setAudioMuted(view, muted)
+    }
+
+    fun pause() { pages.values.forEach { mute(it, true); it.onPause() } }
+    fun resume() { active?.let { mute(it, false); it.onResume() } }
+    fun destroy() { popups.forEach { it.destroy() }; popups.clear(); pages.values.forEach { (it.parent as? ViewGroup)?.removeView(it); it.destroy() }; pages.clear(); speculative.clear(); active = null; startupExecutor.shutdown() }
+}
+
+/** What text picked on a page can become: in a conversation "AI edit" and "Use as context", elsewhere "Hand to Persona". */
+internal enum class ChatLinkPick(@StringRes val label: Int) {
+    Edit(R.string.chat_web_pick_edit), Context(R.string.chat_web_pick_context), HandToPersona(R.string.chat_web_pick_hand),
+}
+
+internal class ChatSelectionWebView(context: Context) : WebView(context) {
+    /** The items put first in the text selection menu, in this order. */
+    var picks: List<ChatLinkPick> = listOf(ChatLinkPick.Edit, ChatLinkPick.Context)
+    var onPick: ((ChatLinkPick, ChatLinkContext) -> Unit)? = null
+    /** A tapped link for another app (mailto:, tel:, intent:): the host asks before it leaves. */
+    var onExternal: ((String) -> Unit)? = null
+    var currentUrl by mutableStateOf("")
+    var pageTitle by mutableStateOf("")
+    var failure by mutableStateOf<String?>(null)
+    var loadProgress by mutableIntStateOf(0)
+    /** Its renderer crashed or was killed: the view is destroyed, the host offers to load the page again. */
+    var gone by mutableStateOf(false)
+
+    override fun startActionMode(callback: ActionMode.Callback): ActionMode? = super.startActionMode(wrap(callback))
+    override fun startActionMode(callback: ActionMode.Callback, type: Int): ActionMode? = super.startActionMode(wrap(callback), type)
+
+    private fun wrap(delegate: ActionMode.Callback) = object : ActionMode.Callback2() {
+        override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean = delegate.onCreateActionMode(mode, menu)
+        // Chromium fills the menu here, each time the selection changes, with items that ask to be action buttons (the
+        // floating toolbar puts those first). Ours ask the same in Chromium's group with the lowest order, so they come
+        // before "Copy", as on iOS; added in onCreateActionMode they ended up after it or in the overflow.
+        override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
+            val changed = delegate.onPrepareActionMode(mode, menu)
+            ChatLinkPick.entries.forEach { menu.removeItem(it.id) }
+            if (onPick == null) return changed
+            val group = (0 until menu.size()).map { menu.getItem(it) }.minByOrNull { it.order }?.groupId ?: Menu.NONE
+            picks.forEach { menu.add(group, it.id, 0, context.getString(it.label)).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS) }
+            return true
+        }
+        override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+            val pick = ChatLinkPick.entries.firstOrNull { it.id == item.itemId } ?: return delegate.onActionItemClicked(mode, item)
+            val sourceUrl = url.orEmpty()
+            val sourceTitle = title.orEmpty()
+            // Read the selection before closing the menu: finishing first clears it, and the script runs later.
+            evaluateJavascript("(function(){var e=document.activeElement;return e&&(e.tagName==='TEXTAREA'||e.tagName==='INPUT')&&e.type!=='password'&&typeof e.selectionStart==='number'?e.value.substring(e.selectionStart,e.selectionEnd):window.getSelection().toString();})()") { result ->
+                val selected = runCatching { JSONTokener(result).nextValue() as? String }.getOrNull().orEmpty()
+                if (selected.isNotBlank() && url == sourceUrl) onPick?.invoke(pick, ChatLinkContext(
+                    if (pick == ChatLinkPick.Edit) "edit" else "context", sourceTitle, sourceUrl, selected))
+                mode.finish()
+            }
+            return true
+        }
+        override fun onDestroyActionMode(mode: ActionMode) = delegate.onDestroyActionMode(mode)
+        override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
+            if (delegate is ActionMode.Callback2) delegate.onGetContentRect(mode, view, outRect)
+            else super.onGetContentRect(mode, view, outRect)
+        }
+    }
+
+    private val ChatLinkPick.id: Int get() = 0x6a0101 + ordinal
+}

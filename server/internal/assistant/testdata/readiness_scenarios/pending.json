@@ -1,0 +1,174 @@
+{
+  "en": {
+    "checked_at": "",
+    "dismissed": false,
+    "launcher": "claude",
+    "machine": {
+      "id": "mbp",
+      "name": "小林的 MacBook"
+    },
+    "mode": "setup",
+    "next": "computer",
+    "ready": false,
+    "steps": [
+      {
+        "action": {
+          "id": "confirm_computer"
+        },
+        "code": "machine_pending",
+        "detail": "Confirm that 小林的 MacBook is your computer before Persona can work on it.",
+        "id": "computer",
+        "machine": "mbp",
+        "state": "todo",
+        "title": "Confirm your computer"
+      },
+      {
+        "id": "claude",
+        "state": "unknown"
+      },
+      {
+        "id": "model",
+        "state": "unknown"
+      },
+      {
+        "id": "first_message",
+        "state": "unknown"
+      }
+    ],
+    "suggestions": [
+      {
+        "id": "what_can_you_do",
+        "local": true,
+        "title": "What can you do for me?"
+      },
+      {
+        "id": "how_to_connect_model",
+        "local": true,
+        "title": "How do I connect a model?"
+      }
+    ],
+    "version": 1
+  },
+  "ja": {
+    "checked_at": "",
+    "dismissed": false,
+    "launcher": "claude",
+    "machine": {
+      "id": "mbp",
+      "name": "小林的 MacBook"
+    },
+    "mode": "setup",
+    "next": "computer",
+    "ready": false,
+    "steps": [
+      {
+        "action": {
+          "id": "confirm_computer"
+        },
+        "code": "machine_pending",
+        "detail": "Persona が使えるように、小林的 MacBook があなたのコンピューターであることを確認してください。",
+        "id": "computer",
+        "machine": "mbp",
+        "state": "todo",
+        "title": "コンピューターを確認"
+      },
+      {
+        "id": "claude",
+        "state": "unknown"
+      },
+      {
+        "id": "model",
+        "state": "unknown"
+      },
+      {
+        "id": "first_message",
+        "state": "unknown"
+      }
+    ],
+    "suggestions": [
+      {
+        "id": "what_can_you_do",
+        "local": true,
+        "title": "何を手伝ってくれるの？"
+      },
+      {
+        "id": "how_to_connect_model",
+        "local": true,
+        "title": "モデルはどう接続するの？"
+      }
+    ],
+    "version": 1
+  },
+  "start": {
+    "body": {
+      "action": "confirm_computer",
+      "code": "machine_pending",
+      "delivered": "none",
+      "detail": "this computer is waiting to be confirmed in the Persona app",
+      "error": "这台电脑还没确认是你的。",
+      "machine_name": "小林的 MacBook"
+    },
+    "status": 409
+  },
+  "start.en": {
+    "body": {
+      "action": "confirm_computer",
+      "code": "machine_pending",
+      "delivered": "none",
+      "detail": "this computer is waiting to be confirmed in the Persona app",
+      "error": "This computer hasn't been confirmed as yours yet.",
+      "machine_name": "小林的 MacBook"
+    },
+    "status": 409
+  },
+  "zh-Hans": {
+    "checked_at": "",
+    "dismissed": false,
+    "launcher": "claude",
+    "machine": {
+      "id": "mbp",
+      "name": "小林的 MacBook"
+    },
+    "mode": "setup",
+    "next": "computer",
+    "ready": false,
+    "steps": [
+      {
+        "action": {
+          "id": "confirm_computer"
+        },
+        "code": "machine_pending",
+        "detail": "先确认小林的 MacBook是你的电脑，Persona 才能在上面干活。",
+        "id": "computer",
+        "machine": "mbp",
+        "state": "todo",
+        "title": "确认你的电脑"
+      },
+      {
+        "id": "claude",
+        "state": "unknown"
+      },
+      {
+        "id": "model",
+        "state": "unknown"
+      },
+      {
+        "id": "first_message",
+        "state": "unknown"
+      }
+    ],
+    "suggestions": [
+      {
+        "id": "what_can_you_do",
+        "local": true,
+        "title": "你能帮我做什么？"
+      },
+      {
+        "id": "how_to_connect_model",
+        "local": true,
+        "title": "怎么接模型？"
+      }
+    ],
+    "version": 1
+  }
+}

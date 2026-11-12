@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_window_title">Persona floating capsule</string>
+    <string name="capsule_mode_off">Off</string>
+    <string name="capsule_mode_active">When tasks are running</string>
+    <string name="capsule_mode_always">Always</string>
+    <string name="capsule_failure">Something went wrong. Open the full chat to check</string>
+    <string name="capsule_open">Open the Persona floating capsule</string>
+    <string name="capsule_open_new">Open the Persona floating capsule, new alerts</string>
+    <string name="capsule_collapse">Collapse</string>
+    <string name="capsule_loading">Loading…</string>
+    <string name="capsule_empty">Nothing here yet</string>
+    <string name="capsule_back">Back to list</string>
+    <string name="capsule_placeholder_working">Add to or change the request…</string>
+    <string name="capsule_placeholder">What should Persona do?</string>
+    <string name="capsule_open_chat">Open chat</string>
+    <string name="capsule_send">Send</string>
+    <string name="capsule_done_suffix">· Done</string>
+    <string name="capsule_done_description">%1$s · Done</string>
+    <string name="capsule_message_suffix">· New message</string>
+    <string name="capsule_message_description">%1$s · New message</string>
+    <string name="capsule_unread">Unread message</string>
+    <string name="capsule_close">Close</string>
+    <string name="capsule_more">More</string>
+    <string name="capsule_switch">Switch conversation</string>
+    <string name="capsule_target">Reply target</string>
+    <string name="capsule_next">Next</string>
+    <string name="capsule_no_more">No more unread conversations</string>
+    <string name="capsule_all_read">All read</string>
+    <string name="capsule_syncing">Syncing…</string>
+    <string name="capsule_retry">Retry</string>
+    <string name="capsule_expand">Expand</string>
+    <string name="capsule_return_capsule">Capsule</string>
+    <string name="capsule_context">Earlier context</string>
+    <string name="capsule_hide_keyboard">Hide keyboard</string>
+    <string name="capsule_group_action">Needs you</string>
+    <string name="capsule_group_fyi">For your information</string>
+    <string name="capsule_group_pending">Read · still pending</string>
+    <string name="capsule_group_completed">Completed</string>
+    <string name="capsule_read_all">Mark all read</string>
+    <plurals name="capsule_message_count">
+        <item quantity="one">%1$d message</item>
+        <item quantity="other">%1$d messages</item>
+    </plurals>
+    <string name="capsule_ask_persona">Ask Persona…</string>
+    <string name="capsule_reply_to">Reply to %1$s…</string>
+    <string name="capsule_confirm_send">Confirm send</string>
+    <string name="capsule_recipient">To: %1$s</string>
+    <string name="capsule_turn_off">Close capsule</string>
+    <string name="capsule_turn_off_hint">Turns the floating capsule off. Turn it back on in Settings › Floating capsule.</string>
+</resources>

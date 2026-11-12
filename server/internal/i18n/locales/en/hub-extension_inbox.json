@@ -1,0 +1,4 @@
+{
+  "needs_triage_model": "Set up “Message triage” in Settings › Models first, then turn on this extension",
+  "needs_triage_setup": "Needs a triage model"
+}

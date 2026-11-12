@@ -1,0 +1,381 @@
+// @vitest-environment jsdom
+// Machines: a refresh that fails after a good one keeps the last cards up and says so in red; a hub with no
+// machines shows the empty state, and one that cannot be reached at all says it cannot see them.
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Machine, MachineMetrics } from "../lib/types";
+import { chooseManager, resetManagerChoice } from "../lib/manager-choice";
+import { currentRoster, resetRoster, setRoster } from "../lib/managers";
+
+vi.hoisted(() => {
+  const g = globalThis as Record<string, unknown>;
+  g.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+  const kept = new Map<string, string>();
+  g.localStorage = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), removeItem: (k: string) => void kept.delete(k) };
+});
+
+const fake = vi.hoisted(() => ({ machines: [] as Machine[], features: [] as string[] }));
+vi.mock("../lib/store", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../lib/store")>();
+  return { ...real, useStore: <T,>(select: (s: ReturnType<typeof real.getState>) => T) => select({ ...real.getState(), loaded: true, machines: fake.machines, features: fake.features }) };
+});
+
+const { Machines } = await import("./Machines");
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let replies: number[] = [];
+let posts: string[] = [];
+let metricsReplies: Record<string, MachineMetrics[] | number> = {};
+const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { "Content-Type": "application/json" } });
+function hub(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const path = String(input).split("?")[0]!;
+  if (init?.method === "POST") posts.push(path);
+  if (path.endsWith("/confirm") || path.endsWith("/reject")) return Promise.resolve(json({ ok: true }));
+  if (path.endsWith("/reconnect")) return Promise.resolve(json({ ok: true }));
+  if (path === "/api/v1/managers" && currentRoster()) return Promise.resolve(json(currentRoster()));
+  if (path !== "/api/v1/metrics") return Promise.resolve(json({ error: "not found" }, 404));
+  const reply = metricsReplies[String(input)];
+  const status = typeof reply === "number" ? reply : replies.length > 1 ? replies.shift()! : replies[0] ?? 200;
+  return Promise.resolve(status === 200 ? json({ machines: Array.isArray(reply) ? reply : [] }) : json({ error: "unavailable" }, status));
+}
+
+let host: HTMLDivElement;
+let root: Root;
+const flush = async () => {
+  for (let i = 0; i < 5; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+};
+const alert = () => host.querySelector('[role="alert"]');
+const buttons = (label: string) => [...host.querySelectorAll("button")].filter((b) => b.textContent?.trim() === label);
+
+beforeEach(() => {
+  resetRoster();
+  resetManagerChoice();
+  metricsReplies = {};
+  fake.machines = [];
+  fake.features = [];
+  replies = [];
+  posts = [];
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  vi.stubGlobal("fetch", vi.fn(hub));
+  history.replaceState(null, "", "/machines");
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+});
+
+afterEach(() => {
+  act(() => root.unmount());
+  host.remove();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+describe("Machines", () => {
+  it("keeps the last cards and says so in red when a refresh fails", async () => {
+    fake.machines = [{ id: "mac", name: "电脑 A", online: true }];
+    replies = [200, 503];
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    expect(alert()).toBeNull();
+    expect(host.textContent).toContain("电脑 A");
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    await flush();
+    expect(alert()?.textContent).toContain("显示的是上次的数据");
+    expect(host.textContent).toContain("电脑 A");
+    expect(host.textContent).not.toContain("还没有电脑");
+  });
+
+  it("shows the empty state when the hub has no machines", async () => {
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    expect(host.textContent).toContain("还没有电脑");
+    expect(alert()).toBeNull();
+  });
+
+  // #5494: the grid has three columns from 2xl; md:col-span-2 alone left a full-row item two cells and put the next card beside it.
+  const fullRow = (el: Element | null | undefined) => {
+    expect(el?.classList.contains("col-span-full")).toBe(true);
+    expect(el?.parentElement?.className).toContain("2xl:grid-cols-3");
+  };
+
+  it("spans every column with the error notice and the empty state", async () => {
+    replies = [503];
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    fullRow(alert());
+    const empty = [...host.querySelectorAll("div")].find((d) => d.parentElement?.className.includes("2xl:grid-cols-3") && d.textContent?.includes("看不到"));
+    fullRow(empty);
+    expect(host.innerHTML).not.toMatch(/(?<![\w:-])md:col-span-2/);
+  });
+
+  it("calls the offline card's button 重新连接, as the machine's page does (#3634)", async () => {
+    fake.machines = [{ id: "mac", name: "电脑 A", online: false }];
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    const labels = [...host.querySelectorAll("button")].map((b) => b.textContent?.trim());
+    expect(labels).toContain("重新连接");
+    expect(labels).not.toContain("重连");
+  });
+
+  // #3578: on a phone the card's "Details" link alone was a 48 × 17 target; a tap anywhere on the card opens the machine.
+  const click = (el: Element) => act(() => void el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 })));
+  const card = () => host.querySelector("section")!;
+
+  it("opens the machine from a tap on the card's blank space", async () => {
+    fake.machines = [{ id: "mac", name: "电脑 A", online: true }];
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    const cpu = [...card().querySelectorAll("div")].find((d) => d.textContent === "CPU")!;
+    expect(cpu.closest("a, button")).toBeNull(); // really blank space, not inside a link
+    click(cpu);
+    expect(location.pathname).toBe("/machines/mac");
+  });
+
+  it("keeps 重新连接 its own: it reconnects and does not open the machine", async () => {
+    fake.machines = [{ id: "mac", name: "电脑 A", online: false }];
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    const button = [...card().querySelectorAll("button")].find((b) => b.textContent?.trim() === "重新连接")!;
+    click(button);
+    await flush();
+    expect(location.pathname).toBe("/machines");
+    expect(vi.mocked(fetch).mock.calls.map(([u]) => String(u))).toContain("/api/v1/machines/mac/reconnect");
+  });
+
+  it("does not open the machine while text on the card is being selected", async () => {
+    fake.machines = [{ id: "mac", name: "电脑 A", online: true }];
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    const range = document.createRange();
+    range.selectNodeContents(card().querySelector("h2")!);
+    getSelection()!.addRange(range);
+    click(card());
+    getSelection()!.removeAllRanges();
+    expect(location.pathname).toBe("/machines");
+  });
+
+  it("leaves the card a plain region: keyboards reach the title link, and no control sits in another", async () => {
+    fake.machines = [{ id: "mac", name: "电脑 A", online: false }];
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    const c = card();
+    expect(c.getAttribute("role")).toBeNull();
+    expect(c.hasAttribute("tabindex")).toBe(false);
+    expect(c.querySelector("a a, a button, button a, button button")).toBeNull();
+    const first = c.querySelector<HTMLAnchorElement>("a[href]")!;
+    expect(first.getAttribute("href")).toBe("/machines/mac");
+    expect(first.textContent).toContain("电脑 A");
+  });
+
+  it("says it cannot see the machines when the first load fails", async () => {
+    replies = [503];
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    expect(host.textContent).toContain("现在看不到机器");
+    expect(alert()).not.toBeNull();
+    expect(alert()?.textContent).not.toContain("显示的是上次的数据");
+  });
+
+  it("offers 添加电脑 in the empty state, and in the header only when the hub can add one (machines_add)", async () => {
+    // Old hubs: the empty state's button opens the how-to instead of the in-app flow.
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    expect(buttons("添加电脑")).toHaveLength(1);
+    expect(host.textContent).not.toContain("hub 连上后");
+
+    fake.features = ["machine_trust", "machines_add"];
+    act(() => root.render(<Machines onToggleSidebar={() => {}} key="new" />));
+    await flush();
+    expect(buttons("添加电脑")).toHaveLength(1); // the empty state's; the header has none while the page is empty
+    expect(host.textContent).toContain("添加一台，Persona 就能在上面替你干活");
+
+    fake.machines = [{ id: "mac", name: "电脑 A", online: true }];
+    act(() => root.render(<Machines onToggleSidebar={() => {}} key="one" />));
+    await flush();
+    expect(buttons("添加电脑")).toHaveLength(1); // the header's
+  });
+
+  it("asks about an online pending computer on its card and confirms it", async () => {
+    fake.features = ["machine_trust", "machines_add"];
+    fake.machines = [{ id: "home", name: "家里的服务器", online: true, trust: "pending", error: "等你在新版 App 或网页里确认这是你的电脑" }];
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    expect(host.textContent).toContain("有一台电脑想加入：家里的服务器，是你的吗？");
+    expect(host.textContent).not.toContain("等你在新版 App"); // the hub's words for old apps
+    await act(async () => buttons("是我的电脑")[0]!.click());
+    await flush();
+    expect(posts).toEqual(["/api/v1/machines/home/confirm"]);
+  });
+
+  it("gives a pending computer that never connected a new link and no 重新连接", async () => {
+    fake.features = ["machine_trust", "machines_add"];
+    fake.machines = [{ id: "home", name: "家里的服务器", online: false, kind: "link", trust: "pending", error_code: "never_connected", error: "等你确认" }];
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    expect(host.textContent).toContain("等这台电脑用配对链接连上来");
+    expect(buttons("重新出链接")).toHaveLength(1);
+    expect(buttons("删掉")).toHaveLength(1);
+    expect(buttons("重新连接")).toHaveLength(0);
+  });
+
+  it("says a machine's error_code in words instead of its raw error", async () => {
+    fake.machines = [{ id: "mac", name: "电脑 A", online: false, kind: "link", error_code: "link_offline", error: "link closed: failed to get reader" }];
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    expect(host.querySelector('[data-error-code="link_offline"]')?.textContent).toContain("Persona Link 没在运行");
+    expect(host.textContent).not.toContain("failed to get reader");
+  });
+});
+
+describe("Machines metrics across managers", () => {
+  const roster = {
+    default: "assistant",
+    managers: [
+      { id: "m-1", name: "Other assistant", online: true },
+      { id: "assistant", name: "Default assistant", online: true },
+    ],
+  };
+  const first: MachineMetrics = { machine_id: "mac", online: true, points: [], latest: { t: 1, cpu: 11, mem_used: 25, mem_total: 100, disk_used: 40, disk_total: 100 } };
+  const second: MachineMetrics = { machine_id: "nas", online: true, points: [], latest: { t: 1, cpu: 62, mem_used: 50, mem_total: 100, disk_used: 75, disk_total: 100 } };
+  const reads = () => vi.mocked(fetch).mock.calls.map(([input]) => String(input)).filter((url) => url.startsWith("/api/v1/metrics"));
+  const showManager = async (id: string) => {
+    act(() => chooseManager(id));
+    await flush();
+  };
+
+  beforeEach(() => {
+    setRoster(roster);
+    fake.machines = [
+      { id: "mac", name: "Computer A", online: true },
+      { id: "nas", name: "Computer B", online: true, manager: "m-1" },
+    ];
+    metricsReplies = { "/api/v1/metrics": [first], "/api/v1/metrics?manager=m-1": [second] };
+  });
+
+  it("loads both managers' CPU, memory and disk, keeping the first machine ID", async () => {
+    metricsReplies["/api/v1/metrics?manager=m-1"] = [second, { ...first, latest: { t: 1, cpu: 99 } }];
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    for (const value of ["11%", "25%", "40%"]) expect(host.textContent).toContain(value);
+    expect(host.textContent).not.toContain("99%");
+    await showManager("m-1");
+    for (const value of ["62%", "50%", "75%"]) expect(host.textContent).toContain(value);
+    expect(reads()).toEqual(["/api/v1/metrics", "/api/v1/metrics?manager=m-1"]);
+    expect(alert()).toBeNull();
+  });
+
+  it.each(["assistant", "m-1"])("still loads the other manager when %s fails on the first load", async (failed) => {
+    metricsReplies[failed === "assistant" ? "/api/v1/metrics" : "/api/v1/metrics?manager=m-1"] = 503;
+    chooseManager(failed === "assistant" ? "m-1" : "assistant");
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    for (const value of failed === "assistant" ? ["62%", "50%", "75%"] : ["11%", "25%", "40%"]) expect(host.textContent).toContain(value);
+    expect(alert()).toBeNull();
+  });
+
+  it("keeps a failed manager's numbers while refreshing the other, and reports only total failure", async () => {
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    metricsReplies["/api/v1/metrics"] = [{ ...first, latest: { ...first.latest!, cpu: 23 } }];
+    metricsReplies["/api/v1/metrics?manager=m-1"] = 503;
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    await flush();
+    expect(host.textContent).toContain("23%");
+    await showManager("m-1");
+    for (const value of ["62%", "50%", "75%"]) expect(host.textContent).toContain(value);
+    expect(alert()).toBeNull();
+
+    metricsReplies["/api/v1/metrics"] = 503;
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    await flush();
+    expect(alert()?.textContent).toContain("显示的是上次的数据");
+    expect(host.textContent).toContain("62%");
+    await showManager("assistant");
+    expect(host.textContent).toContain("23%");
+
+    metricsReplies["/api/v1/metrics?manager=m-1"] = [];
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    await flush();
+    expect(alert()).toBeNull();
+    expect(host.textContent).toContain("23%");
+    await showManager("m-1");
+    expect(host.textContent).not.toContain("62%");
+  });
+
+  it("reads the latest roster on the next poll without polling on every roster push", async () => {
+    setRoster({ ...roster, managers: roster.managers.map((m) => ({ ...m, online: m.id === "assistant" })) });
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    expect(reads()).toEqual(["/api/v1/metrics"]);
+    const next = { ...roster, managers: [...roster.managers, { id: "installing", name: "Installing", online: true, installing: "2099-01-01T00:00:00Z" }] };
+    act(() => setRoster(next));
+    act(() => setRoster({ ...next, managers: next.managers.map((m) => ({ ...m, inbox_needs_you: 1 })) }));
+    await flush();
+    expect(reads()).toHaveLength(1);
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    await flush();
+    expect(reads()).toEqual(["/api/v1/metrics", "/api/v1/metrics", "/api/v1/metrics?manager=m-1"]);
+    await showManager("m-1");
+    expect(host.textContent).toContain("62%");
+  });
+
+  it("keeps a single bare request with one installed manager", async () => {
+    setRoster({ default: "m-1", managers: [roster.managers[0], { id: "installing", name: "Installing", online: false, installing: "2099-01-01T00:00:00Z" }] });
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    expect(reads()).toEqual(["/api/v1/metrics"]);
+    expect(alert()).toBeNull();
+  });
+
+  it("does not request offline managers or report a failure when none is online", async () => {
+    setRoster({ ...roster, managers: roster.managers.map((m) => ({ ...m, online: false })) });
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    expect(reads()).toEqual([]);
+    expect(alert()).toBeNull();
+  });
+});
+
+// A hidden tab asks the hub nothing (the 10 s refresh of every card's numbers stops) and asks once on coming back.
+describe("Machines in a hidden tab", () => {
+  let visibility: DocumentVisibilityState = "visible";
+  const show = (v: DocumentVisibilityState) => act(() => { visibility = v; document.dispatchEvent(new Event("visibilitychange")); });
+  const metricsReads = () => vi.mocked(fetch).mock.calls.filter(([input]) => String(input).split("?")[0] === "/api/v1/metrics").length;
+
+  beforeEach(() => {
+    visibility = "visible";
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
+  });
+  afterEach(() => {
+    delete (document as { visibilityState?: unknown }).visibilityState;
+  });
+
+  it("stops asking for /metrics while hidden and asks once when shown again", async () => {
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await flush();
+    expect(metricsReads()).toBe(1);
+    show("hidden");
+    await act(async () => { vi.advanceTimersByTime(60_000); });
+    await flush();
+    expect(metricsReads()).toBe(1);
+    show("visible");
+    await flush();
+    expect(metricsReads()).toBe(2);
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    await flush();
+    expect(metricsReads()).toBe(3);
+  });
+
+  it("opened in a hidden tab, loads when the tab is shown", async () => {
+    visibility = "hidden";
+    act(() => root.render(<Machines onToggleSidebar={() => {}} />));
+    await act(async () => { vi.advanceTimersByTime(60_000); });
+    await flush();
+    expect(metricsReads()).toBe(0);
+    show("visible");
+    await flush();
+    expect(metricsReads()).toBe(1);
+  });
+});

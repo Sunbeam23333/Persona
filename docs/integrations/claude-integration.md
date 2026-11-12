@@ -1,0 +1,891 @@
+# Driving Claude Code in herdr
+
+Except where a section states otherwise, conclusions were tested with Claude Code 2.1.310 (Mac) / 2.1.308 (Linux hub machine) and herdr 0.8.0 (2026-10-24).
+
+## Starting sessions
+
+Node's `session.start`:
+
+1. Find a herdr workspace whose label equals the directory name (one workspace per project). If present, `tab create --label persona` inside it; otherwise `workspace create --label <directory name>`. Both use `--cwd <directory>` and `--no-focus`, without stealing focus on the computer.
+2. `pane run <pane> "<launcher> --session-id <uuid> --mcp-config ~/.persona/mcp.json --allowedTools <the Agent's own Persona tools>,<office rule> --plugin-dir ~/.persona/agent-plugin --plugin-dir ~/.persona/claude-hooks --plugin-dir ~/.persona/claude-live-replies"`
+   (local Claude Code ≥ 2.1; the last plugin only while the computer's live replies setting is on, see "Live replies (MessageDisplay)"; older or unreadable versions use `<launcher> --session-id <uuid> --settings ~/.persona/claude-settings.json --mcp-config ~/.persona/mcp.json --allowedTools <the Agent's own Persona tools>`; see Hooks below and "Persona tools Agents call without a card"). Launchers are functions in `~/.zshrc` (`<launcher-a>`, `<launcher-b>`, etc.) ending in `claude … "$@"`, so arguments pass through. Resume uses `--resume <id>`.
+   A non-running session is read-only (#4754, `docs/integrations/engines.md` "Agents run in a terminal"): a message is refused (`agent_stopped`), and the user's Resume on its terminal page resumes it, in the shell it left when that is still there. A branch nothing has run yet is started by its first message. Launcher choice for both follows this order (`resumeLauncher` in `node/sendsafe.go`, #411):
+   launcher recorded when Persona started it → inferred from transcript gateway address and model (`inferLauncher`, externally started sessions) → New Agent launcher and model supplied by hub (only for non-running Claude sessions with unknown launchers, `hub/send.go`) → bare `claude`.
+   The first two retain the original model. Previously, failure to infer meant bare `claude`; on computers normally authenticated through launchers, the session showed only “Not logged in” and could not send.
+3. `waitReady`: every 500 ms, read the screen (`pane read --source visible`) + `agent get`:
+   - Directory-trust dialog (“trust this folder”) → compute `down`/`up` + `enter` from cursor position to select “Yes, I trust”.
+     **Herdr reports this dialog as idle**, so Agent state alone is insufficient. Previously, immediately sending the first message fed its text into the dialog, selected “No, exit”, and Claude exited.
+   - State idle/done and composer footer visible (`shift+tab` / `? for shortcuts` / `bypass permissions` / `esc to interrupt`), twice consecutively → ready.
+   - Other blocked state (model selection, etc.) → return immediately; hub pushes the screen to the phone as a `screen` interaction.
+4. Record pane → session, `agent rename j-<first 6 characters of id>`, send first message (`agent prompt`).
+5. Confirm first message reached the transcript (`node/firstprompt.go`): a visible composer does not mean Claude has finished drawing startup auto-update notices or Auto mode explanations. Text typed then may be swallowed, leaving the Agent idle. A send counts only when the matching user message appears in a full incremental `promptWatch` from the byte offset captured before typing. The quick metadata head/tail is insufficient: a multi-megabyte image line can exceed both reads and hide an already-submitted first prompt, causing duplicate re-pastes (#4794). If the file does not exist before typing, attach when it appears and filter older rows by the send time. If the owned draft remains after `submitGrace`, retry only Enter with another grace between attempts, within the 15-second confirmation window. Image and long-text placeholders (`[Image #1][Pasted text #2 +26 lines]`) use the same `pendingPrompt` match as ordinary sends, not a visible-text-only comparison (#4794). Startup also pins the placeholder IDs before recovery; fresh sessions expect the image chips followed by their first text chip, and later or changed placeholders are left alone. Once a recovery Enter has been attempted, never paste the first message again: even an empty composer without a transcript receipt is ambiguous. Only a message dropped before any recovery Enter can be retyped after `waitReady` confirms an empty composer and Claude is not working, up to 3 attempts. If still unsuccessful, a dialog is open, or other input exists, mark the session Needs you (`blocked` + explanatory `attention_reason`), not silently idle. Any later message entering the transcript, from phone or computer, restores normal state.
+   Confirmation runs in the background; launch still returns immediately. Messages sent meanwhile queue behind it under the same typing lock, without mixing with first-message retries.
+   This marker exists only in node memory; after node restart, herdr state is shown.
+   The first message was not made a `claude` argument: launchers may be zsh functions / aliases / `personad launch`, with inconsistent argument forwarding. Variable-length options such as `--allowedTools` can swallow later positional arguments, and long messages would enter the shell command line. Transcript verification works for every launcher.
+
+For Persona-started sessions, node state records the launcher. Manually started Claude sessions using launcher functions have no such record; inference uses `matchLauncher` in `server/internal/node/launchers.go`. Every 30 seconds, node scans running Claude processes' environment variables (also `CLAUDE_CONFIG_DIR` in the same scan, see `claudedirs.go`; only processes owned by node's user; Linux shares one `/proc` traversal with Codex discovery, see `userprocs.go`), records `ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL`, and maps to sessions through `sessions/<pid>.json`. Match the launcher list (`_claude_launchers` functions and aliases calling claude):
+if exactly one launcher matches both base URL and model, use it; otherwise, if exactly one launcher has that base URL (runtime-selected model, displayed as `(claude-choose)`), use it too.
+Leave other cases blank (multiple launchers share a base URL with no model match, or no base URL), without guessing between candidates. Listing sessions does not wait for the launcher list, which requires a login shell: use cache, refresh expired cache in background. The first list after node startup may therefore lack inferred launchers.
+
+## Default thinking effort
+
+**Settings › Claude Code › Thinking effort** changes the machine's `settings.json` default. It offers `auto`, `low`, `medium`, `high`, and `xhigh`. Choosing `auto` removes `effortLevel`, letting the model choose its default. `max` is available through the session's effort control or `/effort max`; it cannot be stored as an effective `settings.json` default.
+
+If an older configuration contains `effortLevel: "max"`, the settings page shows the model default and explains that the saved value is not applied. Reading leaves the file untouched. Choose a supported explicit level to replace it, or use the web page's **Reset to default** action to remove it. The node returns `value: null` with `ignored_value: "max"`, so existing mobile clients also display the default and the explanation without an app update. The hub forwards the requested interface language for the effort title and explanation; the web uses its own matching translations.
+
+## Default permission mode
+
+**Settings › Claude Code › Default permission mode** sets `permissions.defaultMode` in the machine's `settings.json`
+(every configuration directory, like the other rows; the rest of the `permissions` object is kept, and a `permissions`
+value that is not an object is refused rather than replaced). It offers Persona's five modes; resetting removes the key.
+Claude Code starts in it when no `--permission-mode` is given: an Agent started from the Agents page with Follow, and,
+through the hub, a planned task the assistant left unset (`docs/assistant/todos.md`, "Permission of a planned task").
+A mode picked when starting an Agent, and the assistant's default permission mode, still come first.
+
+## Model variables and the 1M marker (tested 2.1.322)
+
+A Persona-managed provider names its models through `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL` / `_SONNET_` /
+`_HAIKU_` / `_FABLE_MODEL`, `ANTHROPIC_SMALL_FAST_MODEL` and `CLAUDE_CODE_SUBAGENT_MODEL` (`providerEnv` in
+`node/launcherenv.go`). A model Claude Code does not know itself (a gateway's own ID) gets the 1M context window only
+when its name ends in `[1m]`, in each of these variables alike: Claude Code strips the marker before calling the
+gateway, adds the `context-1m-2025-08-07` beta, and counts the window as 1,000,000 (the result's
+`modelUsage[…].contextWindow`); without the marker the same model counts 200,000 (Claude's current IDs, such as
+`claude-sonnet-5-5`, count 1,000,000 either way). Measured with `claude -p` against a local fake gateway that logs each
+request's model and betas: a tier through `--model opus|sonnet|haiku|fable`, the sub-Agent model through an Agent tool
+call the gateway returns, the small model (and the Haiku tier when there is none) through the page summary of a WebFetch
+call. `ANTHROPIC_SMALL_FAST_MODEL` wins over the Haiku tier for those background requests.
+
+`CLAUDE_CODE_MAX_CONTEXT_TOKENS` is one value for the whole process: it sets the window of every unmarked model Claude
+Code does not know (`400000` makes it count 400,000, and the session's `1000000` makes a 128K sub-Agent model count
+1,000,000 too), while a marked model counts 1,000,000 whatever it says. So the node marks the session's model when its
+window is over 200K and sets the compact window to that window (#3066); a tier, the small model or the sub-Agent model
+set to a model of its own is marked only when that model's window is 1M or more (#5149), since nothing per model would
+hold a smaller one to its size. An ID already ending in `[1m]` is left alone, and one with no known window is passed as
+it is.
+
+## Persona tools Agents call without a card
+
+An Agent Persona starts has Persona's MCP tools (`~/.persona/mcp.json`) and, in Claude Code's default mode, would ask
+before each call. Its own tools run without asking (#4966): `report_to_supervisor`, `todo_decisions`,
+`todo_decision_add`, `todo_bind_thread`, and a task leader's `task_plan` and `task_review`
+(`assistantwire.AgentOwnTools`). They act only inside Persona and for the Agent calling them (the node names the session
+of its pane, `callerTools`), the manager bounds them (a report is rate limited; a leader's `task_plan` adds workers only
+below its own task, its `task_review` reaches only its direct workers), and a card for each one would ask the user about
+the Agent's own bookkeeping.
+
+- **How**: the start and herdr's resume command of every Claude Agent Persona starts carry `--allowedTools` with exactly
+  these tools under both names `mcp.json` registers (`node/agentplugin.go` `agentAllowedTools`, beside the office
+  skill's rule). It is Claude Code's own rule for that process only: nothing is written to the machine's Claude settings
+  or to the files every session shares, so Claude sessions the user starts themselves ask as before, and a deny rule
+  of the user's still wins. The Paseo bridge is given the same names (`--allow-tools`) and answers them itself for the
+  Agents it created (`docs/integrations/paseo.md`); an agent made in Paseo's own app still asks.
+- **Still asked**: the phone's tools (`phone_*`) and the connectors' (mail and others), which act outside Persona, and
+  `dispatch_start` / `dispatch_read`, which start an Agent on another computer on its model and read that computer's
+  work: their effects reach past the calling Agent's own task, so they keep the card by default. Every other tool and
+  MCP server is unchanged. Codex Agents have none of these tools.
+- **The card's title**: whenever a card is shown for one of Persona's own MCP tools (the ones still asked, or any in a
+  session started elsewhere), the manager titles it with the tool's name for people in the user's language
+  (`tool_title`, `assistant-tool_titles`: "Report to supervisor · Done", "Note a decision"; the phone's tools as the
+  chat's rows name them, "iPhone · contacts search"), never the raw `mcp__persona__…` name, and names the tool alone
+  for the "Always allow" line (`tool_name_title`: every report, not only this "Done"; `docs/protocol/protocol.md`
+  "Always allow"). The title is in the hub's language, like other text the hub writes. Agents already running pick
+  the rule up when they are next started or resumed.
+
+## Independent ultracode switch (#3427)
+
+ultracode makes Claude orchestrate every substantive task as a multi-Agent workflow, independently of reasoning effort. The server supports the independent-switch semantics from Claude Code `2.1.284` onward. Earlier versions require an upgrade, including `2.1.203–2.1.283`, where ultracode occupied the slider's final position and locked the effort level. Running sessions use the version their transcript recorded since the current process started; new sessions use the computer's Claude version. An unknown version may be tried, but the result must still be read back. The switch is off by default, applies only to the current process, does not remember the user's last choice, and is not automatically re-enabled on resume. It is unavailable for headless assistants, including the main chat.
+
+Node's `ultracode.go` sends only `/effort ultracode on|off`. For new sessions it waits until Claude is ready and executes this before the first prompt; that is best effort, never a failed start: a refusal or a verdict not read back goes into `ultracode_note` and the first prompt is typed anyway (#5510), unless the command may still sit in the input box (no verdict, and the box shows a draft or cannot be read), in which case the session needs the user instead of getting the prompt appended to the command. `"ultracode":false` on a start is the same as leaving it out. It does not use `--effort ultracode`, session-specific `--settings`, or change the user's defaults, avoiding replacement of reasoning effort, launcher settings, and login information. Changes share the ordinary-message typing lock and retain the empty-composer / no-dialog checks. While the foreground turn is working / blocked, node records the pending value and waits until the turn ends and the composer is empty; a workflow running on in `background_working` after the turn ended does not hold the switch back. The pending value only holds back the command, never a message: if the phone's next message arrives while Claude rests, the pending command runs first, then the message; while the turn runs, the message joins Claude's own queue and the command waits for the next rest. A draft or dialog keeps it queued with a fixed note (never the draft's words), retried with backoff. Hosts that cannot read or type into the terminal (botmux) refuse the switch with `ultracode_unsupported`.
+
+Read-back chooses the latest evidence by its timestamp, never substitutes the requested value for actual state: post-command screen status, transcript `/effort` output, and `ultra_effort_enter` / `ultra_effort_exit` attachments, excluding sidechains. An explicit `/effort` status line without the `· Ultracode on` suffix means off; ordinary reply text is not evidence. Attachment `reminderType` may be `full` or `sparse`; both prove enabled, but only full and exit generate chat notices. Attachments appear only after a real prompt, and sparse reminders are periodic, not guaranteed every turn. Long transcripts require incremental state tracking, not tail-window-only reading.
+
+Persona launch / resume, or `SessionStart` with `startup` / `resume`, establishes a new process boundary and invalidates earlier evidence. Session creation time is not process start time; `clear` / `compact` do not create a new process. A previously enabled resumed session is recorded off with `ultracode_lost_at` until explicitly re-enabled or the notice dismissed. For sessions Persona started, process boundaries, read-back state, and restoration notices persist in the `ultracode_process` field of their existing node state in hub Postgres (only that field is written, and only once the state has loaded), continuing to filter old-process records after node reconnect; they are not next-launch preferences. Sessions the user started by hand are only observed in node memory: a node state record would make them count as Persona's, and global report-only hooks would be dropped (#5510). Records an older node (#3782) wrote for them are ignored when the state loads. After a node restart, a toggle or dismissal request waits for the state to load before it changes anything. If the initial large-file scan is unfinished, start off and asynchronously recover the notice from the pre-resume file range. Dismissing the notice or re-enabling prevents late scans from resurrecting it. Model refusal reasons are tracked per model and cleared on model change. Dynamic workflows can be enabled through `enableWorkflows` in Claude Code Settings. If unspecified, the account plan determines the default (`default:null`); this does not guarantee bypassing organization policy or feature-availability restrictions.
+
+Protocol, notice-dismissal requests, and old-node `409 node_outdated`: [protocol.md](../protocol/protocol.md), “Claude Code ultracode”. This delivery covers the server only: web #3428, Android #3429, and Apple #3430 add controls and restoration notices. The assistant's `agent_start` / `task_plan` already take `ultracode` per Agent (#12); the web and iOS / Mac show and change it on plan cards and to-dos, and the Android controls are still to come there. Apple's `ChatCache` version bump also belongs to #3430. Status text and attachment keys were checked against static code in the installed `2.1.318` CLI. Tests use synthetic screen / transcript fixtures; no real session was started. Workflow sub-Agent approval counts under default permissions, actual terminal echoes with fixed `CLAUDE_CODE_EFFORT_LEVEL`, and the complete toggle / resume flow still require acceptance in isolated sessions.
+
+## Switching a running Agent to another provider (#5035)
+
+Who it serves: someone in an Agent's chat who wants it to go on with another model provider (a cheaper gateway, a
+provider whose quota is not used up) without starting over. Claude Code reads its gateway, key and model from the
+environment it starts with, and `/model` only picks among the current provider's models, so there is nothing to type:
+the node quits the agent and resumes the same conversation (`--resume <id>`) through the other launcher, in the same
+terminal. Code: `server/internal/node/launcher_switch.go`; wire: [protocol.md](../protocol/protocol.md), "Switching a
+running Agent to another provider".
+
+- **Picking is not switching.** `POST …/modes {launcher, from, model?, effort?}` (node `session.modes`) checks the pick
+  (`planSwitch`, outside the session's typing lock: the checks run a login shell and may ask the hub for a provider's
+  secrets) and keeps it as the session's pending switch (`pending_switch` on its row); nothing is quit or typed, so a
+  pick never cuts into a turn. The session's own launcher drops a pending switch. Recording takes the typing lock, so a
+  pick made while a switch is being carried out is taken against the launcher the agent runs on afterwards; with
+  `from` (the launcher the client saw) it is refused as `switch_stale` when that changed.
+- **Only the user's own message carries it out**: a `session.send` with `apply_switch`, which the web sends from the
+  chat of a session that shows the switch. The assistant's messages, a task's supervision, channels and the phone apps
+  send without it: their message goes on the launcher the agent runs on, and the switch keeps waiting. A switch picked
+  more than a day ago is no longer shown on the row and is dropped when a message comes.
+- **A busy agent is not switched**: one that works, waits for the user, is starting, or has background work a quit
+  would end gets the message on its launcher as always, and the switch waits for a later message. Background work is the
+  row's (running subagents and workflows, a `/loop`) and every background command or monitor of its claude process,
+  however old: the session list leaves out the ones started over a day ago, the switch counts them from the process's
+  start (its ultracode process boundary; a day when that is not known). A transcript whose first read is still running
+  counts as busy.
+- **Everything is worked out before the quit** (`applySwitch`, inside the message's turn, after the usual draft and dialog
+  checks, at most a minute): the launcher's checks below, the conversation's folder, the model to start with, the
+  launcher and model to come back with. Then a last look (the agent's state, background work, a draft or dialog in the
+  box: a turn may have started meanwhile), the session is listed as starting (messages and the user's Resume wait for it),
+  and only then Ctrl+C until the agent leaves its pane (`quitAgent`, the pane kept, never
+  `stop`, which would take the typing lock again), a wait until only a shell is in front and no claude has the
+  conversation open any more (Claude Code still writes its transcript as it exits), and the launcher's command typed into
+  that shell with `--resume`, the current permission mode (and the plan's next mode, so `--allow-dangerously-skip-permissions`
+  stays), the picked effort (else the current one) and the picked model. No model picked: what a new session of that
+  launcher runs (`resumeModelOf`), since `--resume` alone would bring back the old provider's model (#2487); when that
+  cannot be seen (a provider that names no model, a wrapper script) the pick is refused as `switch_pick_model`.
+- **In the conversation's folder**: `claude --resume` finds a conversation by the project folder named after the
+  directory it started in. The folder is the first of the record's directory, the agent's and the transcript's whose name
+  is the transcript's project folder (the transcript's own `cwd` may follow a Bash `cd`); none of them: refused. A shell
+  that is elsewhere gets `cd <folder> &&` in front of the command (`cd <folder>;` in nu and elvish, which have no `&&`);
+  the record keeps its folder.
+- **Nothing else restarts it meanwhile**: from the moment the message takes the switch up (before its checks) until it
+  ends, a pick or cancel is refused at once as `switch_stale`, and a stop or archive at once as still starting, rather
+  than held for the minutes the message holds the session's typing lock. Whatever else would type into the pane or
+  press its keys (a model, mode or effort change, a rewind, a dialog answer, keys, an interrupt, a close) is refused as
+  `switch_under_way`: on a resident node's next connection the switch may run on the last connection's Node, whose
+  typing lock this one does not hold.
+- **From the first Ctrl+C on, on its own clock** (`context.WithoutCancel`, at most 5 minutes): a hub redeploy that ends
+  the connection does not leave the agent quit and not started again. The start on the new launcher gets 90 seconds.
+  The hub waits 8 minutes for a message with `apply_switch` (enough for a switch to the other engine too, below). A resident node (`personad node --attach`, Persona Link)
+  makes a new Node for each connection; what the node keeps of switches outside the records is shared by its Nodes
+  (`switch_share.go`, handed over as the background scans are): the next connection's Node lists a switch still under
+  way as starting, its messages and the user's Resume wait for it, picks and stops are refused; the records the switch
+  writes once its connection is gone go to the next Node, over the copy it loaded from the hub, and through it to the
+  hub, in the order the switch wrote them, and only the fields the switch owns (launcher, model, folder, start time, plan
+  mode, pane, pending switch), so what the new claude's hooks recorded on the new connection stays. When the switch
+  ends the serving Node pushes its list (the row leaves starting) and shows the model and modes it started with. After
+  the quit the switch needs nothing from the hub (the launchers' secrets were fetched by the checks before it). The
+  computer stays reachable meanwhile: nothing waits for the old Node.
+- **A failed switch is dropped and rolled back.** Whatever fails (the checks when the message comes, an agent that does
+  not quit, a start that does not come up), the pending switch is cleared, so nothing tries it again on every message,
+  and the message is refused with nothing typed. After a start that did not come up, the record goes back to what it was
+  (launcher, model, folder, start time, plan mode); a claude that start left in front (stopped on a sign-in screen of the
+  new launcher's directory) is quit with Ctrl+C until the shell is back, and when the own launcher still passes the
+  checks (worked out before the quit) the agent is resumed on it in the same shell with the model it last switched to
+  from the app, else the record's (`switch_failed`). When that fails too, the agent has stopped (`switch_failed_stopped`):
+  Resume on its terminal page brings it back on its own launcher. An agent that does not quit runs on
+  (`switch_not_stopped`). Every refusal says `delivered: none`, so the client keeps the words in the box.
+- **What is refused** (when picking, and again when the message comes, since things change): not a Claude Code Agent
+  running in a terminal Persona can type into (`switch_unsupported`: Codex and other CLIs, runtimes, assistant
+  conversations, which switch in their own chip, botmux, hosts that cannot say what runs in a pane); a session on a
+  launcher Persona cannot tell (one it did not start whose environment names no launcher: it could not be brought back on
+  it); a launcher not on the computer (`switch_launcher_missing`) or of another agent (`switch_other_agent`); a model
+  with a launcher that fixes its own `--model` (`switch_model_locked`); no model, and a default that cannot be seen
+  (`switch_pick_model`); and a launcher whose Claude config directory does not hold the conversation at its latest copy
+  (`switch_config_dir`). The last one is the main risk: `--resume` looks only in the config directory claude runs with,
+  so a launcher of another profile would answer "No conversation found", or resume an older copy and lose the turns
+  since; and the sign-in lives in that directory too, so forcing the conversation's directory on the launcher could run
+  it on another account (`docs/lessons/agents.md`). The directory is the one the launcher sets (a managed provider's
+  environment, `claude_start_dir` for plain claude, what the probe saw a shell launcher export, `~/.claude` when it unsets
+  the variable with `env -u`), else the login shell's `$CLAUDE_CONFIG_DIR`, else `~/.claude`; it must hold the newest copy
+  of the transcript (a symlinked `projects/` counts). One that cannot be told (a launcher the probe cannot follow or that
+  is a script on PATH, a login shell that did not answer) is let through: a resume that finds nothing ends the start,
+  and the switch rolls back. The pane's own shell environment is taken to be the login shell's.
+- **Where the pending switch lives.** In the session's state record (`pending_switch`, persisted with the model in the
+  hub's Postgres), so a node restart neither drops it nor carries it out by itself; a message right after a restart
+  waits for the record to load first. A session Persona did not start has no record and gets none for this (a record
+  means "Persona started it"): its switch waits in the node's memory (a resident node's reconnect keeps it), and a node
+  restart forgets it, so its row shows none and nothing is switched behind the user's back. A switch carried out writes a record, as a Resume does, and so
+  does one that failed: a session Persona did not start keeps a record of its own launcher after a failed switch, the
+  one a Resume brings it back on once no process of it is left to name it.
+- **Not carried over**, as with any resume: the ultracode switch (its resume notice says so), "allow for this session"
+  rules, a running `/loop` (it holds the switch back), and bypass availability, which follows the new launcher's own
+  flags. The new provider starts with a cold prompt cache. The row's `model` shows the picked model until a reply names
+  one.
+- A stopped agent with a pending switch stays as it is: Resume brings it back on the launcher it ran on, and the next
+  message from the chat carries the switch out then.
+
+## Switching a running Agent to another engine (#5054)
+
+Who it serves: someone in an Agent's chat who wants the conversation to go on in the other engine (Claude Code ↔
+Codex) without starting over, in the same terminal. Neither engine can read the other's conversation, so the node gives
+the other engine a handoff of it; when the conversation ran on that engine before, the session it ran in then is
+resumed instead, with only what happened meanwhile. It is the provider switch above with a launcher of the other
+engine: the same pick, the same message that carries it out, the same time bounds and rollback. Code:
+`server/internal/node/engine_switch.go` (the handoff text: `engine_handoff.go`); wire:
+[protocol.md](../protocol/protocol.md), "Switching a running Agent to another engine"; the Codex side:
+[codex.md](codex.md) ("Starting from the phone", "Resuming from the phone").
+
+- **Picking**: `session.modes` with a launcher whose engine (`launcherModelsAgent`, after the checks that keep a word that
+  is no launcher from being run) is the other one than the agent's is a switch to it (`planEngineSwitch`), kept as the
+  pending switch with `agent` naming the engine. Checked: a Claude Code or Codex Agent in a terminal Persona drives
+  (`switchSession` with `engine` set: still not an assistant conversation, a runtime's or botmux's session, a Codex
+  thread an app-server or another program runs, an agent in a terminal only); its own launcher known, since a failed
+  switch brings it back there (Claude Code: as above; Codex: its record's, which must still run Codex); its conversation's
+  folder (Claude Code: `switchCwd`; Codex: its record's, else its rollout's `session_meta`); the launcher on the
+  computer, running that engine (a shell function running Codex is refused, as for a start), and taking the model when
+  one is picked. The effort is the one picked only (the engines' levels differ). A Codex session picking another Codex
+  launcher stays refused: Codex has no provider switch.
+- **The parked session**: the most recent stretch of the target engine in the session's `engine_history` (its record's).
+  When there is one it is checked too, and one that cannot be resumed is no refusal: a fresh session takes the
+  conversation. A Claude Code session needs its transcript, its project's folder, nothing having it open
+  (`openElsewhereRefusal`), a launcher whose config directory holds its newest copy (`checkSwitchConfigDir`), and without
+  a model picked one the launcher runs by default that can be seen, unless it ran on that launcher; a Codex thread
+  needs what any resume of it does (`codexResumable`), a launcher running Codex in its home, and no unconfirmed resume of
+  it still coming up.
+- **Carrying it out** (`applyEngineSwitch`, inside the message's turn, before a Codex's app-server would take the
+  message): a busy agent gets the message and the switch waits (Claude Code: `switchBusy`; Codex: working and not only by
+  herdr's stale word, waiting for the user, a turn on its app-server, starting); a message with photos is refused
+  (`switch_unsupported`) and the switch waits, since only text goes over; then the usual draft and dialog checks, the
+  plan again, both handoffs (the whole conversation, and for a parked session only the stretches after its last one plus
+  the current), a last look, the session listed as starting, Ctrl+C (`quitAgent`), and a wait for the shell
+  (`shellAfterQuit` for the engine: for a Codex, until no Codex CLI holds its rollout; an app-server keeping the thread loaded does
+  not count). Then the to-do link of the pane (`persona_todo_ref`) is written as its `persona_from`, so the new session
+  joins the same to-do, and the other engine starts in that shell (`startEngine`, the pane adopted as "Run Agent Here"
+  does): the parked session resumed (`--resume <id>` and the message; `codex resume <id> -- <message>` through
+  codex-start in its folder), else a fresh one (`--session-id`, the prompt typed once it is ready, `cd` first when the
+  shell is elsewhere; codex-start with `dir`). The start's prompt is the handoff block and the user's words (`handoffMessage`, template `prompts/agents/engine_handoff_message.md`); nothing is
+  typed again. The permission mode goes where the other engine has it: plan both ways, bypassPermissions to Codex as
+  its bypass flags, the rest is the launcher's.
+- **Records**: the start writes the new session's record with the conversation's history (`withEngineHistory`: the
+  history before it plus this session's stretch until the switch began), so the list never shows the two as separate
+  rows; then the new record loses the pending switch (and keeps the model picked for Codex, what a Resume of it runs),
+  and the session switched away from loses its history, switch and pane (a reload binds the pane to the new session
+  only). The pane, when Persona opened it for the old session, is marked as the new one's (`persona_tab`). A switch
+  whose connection went away hands the new session's record on as well (`switchShare.keep`: its last stretch names the
+  switch's session).
+- **The list** (`joinStretches`): rows get the history their records carry, and every session named in another listed
+  row's history, other than that row's own, is left out while it is parked there (`parkedRow`: idle, done, offline or
+  cut off by a restart, with no pane and no claude process outside Persona's panes that has it open; or the row of the
+  switch moving it on). A Codex thread an app-server keeps loaded after a switch to Claude Code is parked too: listed,
+  a message to it would start a turn on the conversation's old thread, and Persona no longer joins it again when that
+  app-server comes back (`forgetCodexJoin`; the join of the running connection lasts until it ends). One that runs
+  again (in a pane, resumed by hand; a claude in another terminal) or works or waits for the user is its own row, and
+  so is one used after the conversation left it (its row's activity more than two minutes after its stretch's `until`,
+  `stretchGrace`: a Codex resumed in another terminal or the Codex App; the switch itself quits it right then). The
+  most recent conversation counts first, and a row it left out names none, so two records still naming each other
+  keep the newer one unless the older one runs. A row continuing a conversation shows its first stretch's title unless
+  its own is manual.
+- **The parked session while it is resumed**: the switch holds it from just before the first Ctrl+C until the switch
+  ends (`switchShare.hold`, unlisted): a message to it and the user's Resume (`awaitSwitch`) wait for it and then find
+  it running, a stop, a pick or keys are refused, so no second writer of its conversation starts beside the switch's.
+  The user's Resume registers itself while it starts a session (`resumeTurn`, `switchShare.resuming`, after it waited
+  for any switch of it): a switch does not take up a session being resumed so (the hold is refused, and a fresh
+  session takes the conversation). As soon as it holds the session, before the first Ctrl+C, the switch looks at it
+  again (`parkedNow`: running, or no longer passing its checks: a fresh session takes the conversation at once), and
+  once more right before the resume (`resumeParked`): the session's typing lock is waited out within the start's time
+  (`waitTyping`: a resume of it already under way, a Codex's resumeCodexSession), and one that runs by then, is open in
+  another claude or is no Codex thread to resume any more is not resumed; a start that finds it running elsewhere and
+  typed nothing counts as one that did not come up. The typing lock is not
+  what holds it: the claude start's first prompt takes that lock itself.
+- **Fallbacks**: a parked session that does not come up gives way to a fresh one once (its record put back,
+  `stateFile.putBack`); a fresh one that does not come up loses the history it was given, the pane is cleared and the
+  agent resumed on its own launcher (`comeBack`: Claude Code as above; Codex `codex resume <id>` with its record's
+  model and mode), `switch_failed`, or `switch_failed_stopped` when that does not come up either. A start in the adopted
+  pane never closes it (`closeNewTab`, `closeCodexStart`).
+- **A start that may have the message never falls back.** The message is in a Codex start's argv: once codex-start has
+  claimed its file, the Codex in the pane may run it whenever it gets past where it stopped (a dialog, a thread not seen
+  in time). codex-start claims the file by renaming it away before it reads it, and the node withdraws a file it gives
+  up on by renaming it away too (`claimCodexStartFile`, `codexMessageMayHaveGone`): exactly one of them has it. Such a
+  start's error is `delivered: "unknown"` (`unconfirmedStart`) when codex-start claimed the file and the pane does not
+  show only its shell again (after a `personad codex-start:` failure line the shell gets three seconds to come back in
+  front, `codexFailWait`); what codex-start printed is not otherwise read for this (its notes, `personad codex-start (note):`,
+  come right before the Codex with the message; a codex-start that failed is back at the shell). So is a claude start
+  whose first prompt was typed but not taken (herdr's error is not one of nothing typed). Then the switch stops where
+  it is (`unconfirmedSwitch`): no Ctrl+C, no other start, no rollback, the pending switch dropped, and the message
+  answered as uncertain so the app does not offer the words again as if nothing had gone. When the session that start
+  was for is known (a fresh claude's id, the parked session) the records say the conversation went on there
+  (`engineSwitched`, which makes a record for a session Persona has none of, a parked Codex thread started elsewhere):
+  it is the conversation's row, and the session switched away from, which was quit, is an earlier stretch of it. A
+  fresh Codex thread that did not show is not known: the pane stops standing for the session switched away from (its
+  binding and its record's pane go, so its row does not show the Codex and a message to it is not typed into it), no
+  other thread is guessed for the pane, and the node looks for the thread for five more minutes (`watchLateCodex`):
+  once it shows, it is bound to the pane and takes the conversation; a pane back at its shell ends the look. A start
+  whose codex-start file was never claimed withdraws it (so a line the shell runs late finds nothing) and falls back
+  as before.
+- **A first message a dialog held back** (the new claude came up behind a dialog of its own, such as a large session's
+  resume prompt, or the ultracode command may still sit in its box: `firstPrompt`, `start`): the switch is done, and
+  the session's row says its first message did not go in, as for any start. The handoff is kept on the new session's
+  record (`PendingHandoff`, persisted in the hub's Postgres like the history, with when that start began) and goes in
+  front of the next message sent to that session, whoever sends it (send.go): the words the user sends again do not go
+  without it. It is cleared once that message is known to be in (`afterPrompt`), and dropped instead of put in front
+  when the session got a message since it was kept or works (`promptedSince`: one typed at the computer, or the earlier
+  message whose arrival was not confirmed), so it never comes twice; also when the session's lost first message is
+  cleared that way, and on a session a later switch moves the conversation away from.
+- **Time**: as the provider switch, but up to three starts (the parked session, a fresh one, the agent back), so the
+  switch's own clock is 5½ minutes (`engineSwitchBudget`); with the minute of checks and the handoff built before the
+  quit it stays under the hub's 8-minute wait for a message with `apply_switch`.
+- **Not carried over**: the reasoning, tool results and everything the handoff leaves out; the prompt cache (once); the
+  ultracode switch, "allow for this session" rules, background work (it holds the switch back), photos.
+- **Known limits**: a Codex effort of `minimal` or `ultra` is refused when picked (a start takes Claude Code's levels and
+  `auto` only); the block names a model only when the pick or the launcher's list names one (the list's placeholder for a
+  launcher that names none is not shown); a switch whose connection goes away and then fails rolls its records back on
+  the old connection's Node only (`switchShare.keep` hands on what the switch wrote, not the rollback), which leaves a
+  started session that never came up with the history: it is not listed (no transcript), so nothing is hidden by it; on
+  a node without `engine_switch`, a pick of a launcher of any other agent reads "Update the node" (`hub/ultracode.go`).
+  A Codex thread in a `CODEX_HOME` other than the default (a launcher that sets one, a thread of another home) is not
+  resumed on a switch back: a fresh thread takes the conversation with the whole handoff. Rolling a Codex agent back
+  resumes it with its record's model and plan mode only: a bypass or an effort it was started with is not restored, so
+  it comes back more restricted than it ran. Between the plan and the hold, a claude --resume of the parked session
+  typed by hand in a terminal is caught only by the looks again (it runs, or a claude has it open). A first message
+  found lost only later, by the background check after it was typed (the box not back, other text in it, three tries),
+  does not keep the handoff for the next message. The late-Codex watcher belongs to its connection's Node: a resident
+  node that reconnects within those five minutes loses the late join, and the conversation is two rows. A hidden
+  earlier Codex thread still takes a message sent to its id directly (the web opens the conversation's row instead).
+  While the watcher looks, its pane counts as a Codex starting (`codexStarting`: a node self-update waits) and it
+  answers Codex's trust and update screens there, for up to five minutes.
+
+## Session IDs and transcripts
+
+- Mac has herdr's Claude integration; `agent list` includes `agent_session.value` (= Claude session ID). **The hub machine does not**, so it lacks the ID.
+- Fallback order: herdr report → `HERDR_PANE_ID`→`session_id` recorded by our hook (hook inherits pane environment; only Persona-started sessions) → **the pane's Claude process's `~/.claude/sessions/<pid>.json`** (maintained by Claude Code, includes current `sessionId`, updated after `/clear`; obtain PID with `herdr pane process-info --pane <id>`, cache one minute) → title matching AI title → newest `.jsonl` in the project directory inferred from cwd (replace every nonalphanumeric cwd character with `-`, e.g. `/Users/me/code/persona` → `-Users-me-code-persona`).
+- The final two are guesses and necessarily wrong for newly started Claude: `sessions/<pid>.json` appears several seconds later (four or five on Windows), and its own `.jsonl` does not exist before the first message. “Newest in directory” belongs to the preceding session, so a new tab initially shows the old session (#1980). Claude panes appearing after node startup therefore get a 20-second grace period (`freshPaneGrace`). With neither PID file nor pane binding, do not guess or list them during that period. Recheck PID files every refresh (normally missing files are retried every 5 seconds). After grace, resume guessing for old Claude Code versions without PID files. Panes already present at node startup are not new and are guessed immediately.
+- Herdr's ID comes from the Claude integration SessionStart hook, which binds the process's `HERDR_PANE_ID` to the pane. Claude processes outside that pane can report it too if they inherit this variable: a tmux server first started inside herdr (as botmux does) passes `HERDR_*` to every later Claude process. Herdr's main tab then shows a botmux session while the actual pane Claude appears offline (2026-11-04). When a terminal Claude runs a session unclaimed by any pane, node also reads its own `sessions/<pid>.json`; if it differs from herdr, trust the pane process (`setAgentsAt`, `unplaced`).
+- Transcript: `~/.claude/projects/<encoded cwd>/<session id>.jsonl`. Append a line when each content block completes (thinking, text, tool_use each on separate lines; tool_result in the next user line). Not per-token; word-by-word display comes from screen sampling.
+- Skip `isSidechain` (sub-Agents), `isMeta` (system-injected user messages), and non-chat lines such as `attachment` / `api-request*` / `mode` / `permission-mode` / `file-history-*`. `ai-title` supplies the session title. From `system`, retain only `compact_boundary`, `api_error`, `informational`, `away_summary`, `local_command` (new versions write slash commands and output as system rows: `<command-name>` is user input, `<local-command-stdout>` becomes a notice after stripping terminal escapes), and `scheduled_task_fire` (/loop due, a wakeup). `api_error` writes a row per retry (`retryAttempt` / `maxRetries`), reason in `error.formatted`; show only the first and final abandoned retry. Other rows may have a string `error`; parse raw JSON. Identical `<task-notification>` content often appears both as a user row and queued_command; show once. Multiple notifications for the same task with different content are real events.
+- **A turn that ended on a model API error** (`server/internal/transcript/turnerror.go`, #1710): Claude Code writes its own reply for the failed request, an `assistant` row with `isApiErrorMessage: true` and model `<synthetic>`, shown as the answer as before. Its text also becomes `Meta.TurnError` (→ `Session.turn_error`), and its string `error` field the kind: `rate_limit` with `quotaLimits.status: "rejected"` is a subscription's usage limit (`usage_limit`, reset = `quotaLimits.resetsAt`, epoch seconds), `authentication_failed` and `model_not_found` the user's to fix, `server_error` transient; anything else (a gateway's 429 is a `rate_limit` without `quotaLimits`, `unknown`, an older version with no field) gives no kind and the hub reads the text. A turn start (a message or a wake; not a local command) and a reply from the model clear it. `turn_error_after_work`: the turn had a non-error reply, tool call or thinking before the error. `turn_error_resumes`: an `informational` notice saying "… continuing automatically …" (not the reset's own "Usage limit reset · …"); "Automatic continue …" (cancelled, turned off, stopped, did not run) and "… Press enter to continue" take it back, as do a typed message (Claude Code cancels its continuation on any submit, silently), a reply and another kind of error. It survives the wake turns of background tasks during the wait: each fails again at once with no new notice. Rows of a sub-Agent (`isSidechain`) never touch it, except in that sub-Agent's own transcript. A turn gone back over by a rewind takes its error with it (`Tail.SettleTurnError`).
+
+## Background sessions (/fork, move to background)
+
+Tested 2026-11-04 with Claude Code 2.1.303 (`server/internal/node/claudebg.go`):
+
+- Sessions started by `/fork <message>` or moved to background do not run in terminals. `claude daemon` launches a Claude process; `sessions/<pid>.json` has `kind: "bg"`, with `status` busy / idle / waiting (question or dialog). No pane; herdr does not receive its SessionStart hook. Transcript remains `projects/<cwd>/<session id>.jsonl` (fork copies history with a new ID and `sessionKind: "bg"` per row), with sub-Agents beside it. Previously these always appeared offline.
+- Node lists live background sessions as running (PID exists, not an unclaimed warm `spare`, transcript exists): busy → working, idle → idle, waiting → blocked, others unknown. Source `source_kind: "claude_bg"`, `capabilities` read (and send, when its peer inbox is one the node can use: "Claude outside Persona's terminals" below), with `read_only_reason` when it cannot send. The app can view them with streaming updates, sub-Agents, and background tasks, but cannot answer cards or view a terminal; hub creates no screen cards. A send goes through the inbox, or is refused with why, typing nothing.
+- Interactive Claude parking its session: `sessions/<pid>.json` retains `sessionId` and adds `parkedJobId` (original transcript ends with `continued-in`). Pane shows Claude's agents view; returning removes `parkedJobId`. Herdr still identifies the pane by SessionStart ID and reports status from the terminal title of the background session opened in agents view. The original session thus appears Working, and phone messages type into agents view. Like Claude Code, node does not treat a parked process as holding this session open: no typing into that pane, no herdr-derived state; normal behavior returns when Claude returns to it.
+- Agents view opens the background job the session moved to (`jobId` in background `sessions/<pid>.json` equals `parkedJobId`), showing that chat and composer with terminal title equal to its `name`. When pane title equals this job's `name`, node identifies the pane as that background session, lists it in the corresponding herdr tab, and sends / receives through the pane rather than a separate read-only `claude_bg` entry (2026-11-04: four herdr tabs, one missing on phone).
+- In the agents list (title not equal to job `name`: job finished / stopped, or another selection), retain the pane under the original session's tab: idle, `capabilities` read + terminal, with `read_only_reason`. The phone can select with arrow keys / Enter in terminal just like the computer; entering associates the pane with that session. Do not type messages into the list; node rejects with `open_elsewhere`, typing nothing—the list composer would create a new background session. Previously such panes appeared nowhere (2026-11-05: tabs 2 and 4 disappeared after two jobs ended).
+
+## Claude outside Persona's terminals (desktop app, other terminals)
+
+`server/internal/node/claudebg.go`, `claudepeer.go`. Measured 2026-11-07 on Windows 11 with Claude Code 2.1.308 (the desktop app's own) and 2.1.291 (the CLI).
+
+A Claude session can run where Persona has no pane: in Claude's desktop app (its Code page), or in a terminal herdr, Orca, Tern and botmux do not run. It writes `sessions/<pid>.json` like every claude: `sessionId`, `cwd`, `kind: "interactive"`, `entrypoint` (`claude-desktop`, or with a suffix in some builds, `claude-desktop-3p`; `cli` in a terminal), `status` (busy / idle / waiting, with `waitingFor`), `version`, `procStart` (on Windows the process's creation time as a FILETIME, on Linux `/proc/<pid>/stat` field 22), `pidDomain` (`win32:<host name>`, never copied anywhere), and, since 2.1.29x, its peer inbox: `messagingSocketPath`, `peerProtocol: 1`, `peerFeatures` (`notify_idle`, `artifact_yield`). Before, these listed as not running, and a message from the phone was refused (`open_elsewhere`): a second `claude --resume` would write the same transcript.
+
+Node lists every live one (`procStart` matches the running process: a reused pid is not it) as running, with source `claude_desktop` or `claude_cli`, its status from the file like a background session's (busy → working, idle → idle, waiting → blocked with `attention_reason`), and its transcript as for any session. Its title is the transcript's (its AI or custom title), else a name something chose for that claude (`name` with `nameSource` `user`, `peer`, `collision`, `auto` or `hook`), else its first message as for any session; the name Claude Code derives itself (`nameSource: "derived"`, the directory's base name and two hex digits: `home-a8`) only stands in while there is none of these, since the sessions of one directory would differ by those two digits alone. A `cli` claude whose environment names an engine's pane (`HERDR_PANE_ID`, `HC_TERMINAL_ID`, `ORCA_PANE_KEY`, `TERN_PANE`, `BOTMUX_SESSION_ID`…) belongs to that engine and is not listed here, but only while an engine in use lists that pane with a claude in it. A pane variable alone is not enough: a claude in Orca's terminals on a node that does not enable Orca, or one the engine's process scan missed, is listed here as running instead of falling through to the offline list, once the node has seen it for 5 seconds (an engine reports a claude just typed into its pane a moment after it starts, so it does not flip to this row and back). Claudes run from an SDK (`entrypoint` `sdk-…`) are left to their own host. At rest, a program's one-shot run of the command line is left out of the offline list too, before a row is counted toward the 80 (#3828, `node/claude_oneshot.go`): a script running `claude -p` all day pushed the user's own sessions out. It is one from its first entrypoint to its last (`sdk-cli`, `transcript.ClaudeOneShot`: the last read within the transcript's last 8 KB, the first, only then, within its first 64 KB, since a program's first line is its prompt), so a session the user also had in a terminal, either way round, is listed, and so is one whose entrypoints are not within those bytes. Listed as before is everything Persona has a hand in: whatever was started under its state directory (its path and its resolved path: the assistant's, any manager's, a health space's, a guest's), a session the node keeps state for (none is left out while that state still loads), a fork, a kept session. The Agent SDKs' runs (`sdk-ts`, `sdk-py`) are listed: interactive hosts such as Paseo run the user's sessions through them. `CLAUDE_CODE_ENTRYPOINT` passes to child processes (`node/agentenv.go`), so a `claude -p` run from an interactive session's shell says `cli` and is listed. Capabilities: read, and send when the node can use the inbox (protocol 1, a path this platform dials, and on Windows a key file); otherwise `read_only_reason` says why. Never interrupt, approve, terminal, attach or modes: questions and permission prompts there are answered on the computer (no hook of Persona's runs in such a claude, and its screen is not Persona's to read). Its permission mode, effort and model change there too: the inbox carries messages only and a message never gives the session a pane, so the row says `capabilities.modes: false` and a `POST …/modes` that arrives anyway is refused with `modes_on_computer`, not "not running, send a message first" (#1843; `node/modes.go` `noPaneForModes`).
+
+### The peer inbox (read from Claude Code 2.1.308; 2.1.291 the same)
+
+- **Where**: Windows, a named pipe `\\.\pipe\LOCAL\cc-msg-<32 hex>`; macOS and Linux, a unix socket `$XDG_RUNTIME_DIR/cc-socks/<pid>.sock`, or `/tmp/cc-socks-<uid>/<pid>.sock` when that path is too long. Only an interactive claude with cross-session messaging on opens one (a server-side switch, on by default on Windows; `CLAUDE_CODE_HARBOR_KITE=0` turns it off).
+- **Frames**: one JSON object per line (at most 1 MiB), sender to inbox only. The inbox never writes back on the connection. A connection that sends no complete line in 30 s is closed.
+- **Auth**: the first line `{"type":"auth","token":"<peerToken>"}`. Required on Windows (any other first line drops the connection); optional elsewhere. The token is in `<config dir>/sessions/<pid>.<sha256 of the canonical socket path>.key`, a JSON file only the user can read: `{"peerToken": <32 hex>, "procStartFt" | "procStart", "pidDomain"}`. The canonical path of a pipe is `\\.\pipe\` plus its name in lower case (with `LOCAL\` when it has one); of a socket, its absolute path. A second token (`CLAUDE_CODE_MESSAGING_TOKEN`) is given to the claude's own children; it marks a message as the session's own ("self-sent").
+- **A message**: `{"type":"user","message":{"role":"user","content":"…"},"msgV":1,"msg_id":"<uuid>","priority":"next","session_id":"<id>"}`. `priority` next (the default) queues it; now runs it before what is queued; later after. `session_id`, when set and not the session's, drops the line (the claude moved on to another session). `from` is the sender's own inbox (`uds:<path>`) for receipts; a sender with no inbox leaves it out. Other types: `control` (`rename`, `peer_message_status` receipts, `notify_when_idle` / `peer_idle_notice`, `yield_artifact_replies` / `artifact_replies_yielded`), all addressed to a sender's inbox.
+- **What the session does with it**: the content goes to the model after Claude Code's own line "Another Claude session sent a message:" and a warning that a peer is not the user. A Claude sender puts the body in `<cross-session-message from=… from-name=… from-mode=…>`; the session takes the sender's name and the body from that envelope into the transcript line's `origin` (`{kind: "peer", name, body, msg_id}`), and a message without one is written with neither. Then one of: **taken** (a `queue-operation` enqueue, then the hidden user line that starts a turn when the session rests, or a `queued_command` attachment absorbed at the next tool boundary while it works; a dialog on screen does not stop it); **held** for the person at the computer to approve (a session in bypass permissions mode holds a message whose sender does not state its permission mode, `from-mode` bypass / prompting; Claude Code's `crossSessionInbound` setting can say accept, hold or refuse, and a hold shows "Held peer message … Review it below" in the terminal); **refused** (that setting, or the switch off); **dropped** (a per-sender rate limit of 30 at once refilling one every 2 s, the same body as the last within 30 s, a full queue of 50). Receipts (held, denied, expired, delivered, refused, dropped) go only to a sender's `from` inbox. Slash commands are not run (`skipSlashCommands`).
+- **`notify_idle`** means the inbox takes `notify_when_idle` (tell the sender's inbox once this session is idle); **`artifact_yield`**, handing artifact comment replies between sessions. Neither is used by the node.
+
+### Sending from the phone
+
+`sendOutside`: when no pane runs the session and a claude outside Persona's terminals has it open with an inbox, a message goes there, never as a second claude. Text is `prompts/agents/peer_message` (it tells the model the words are the user's own from the phone, to be answered in this session, not with SendMessage) inside Claude Code's envelope signed `from-name="Persona"`, without `from` or `from-mode`. Pictures go as paths in `<attached_images>` as with a pane; the inbox is not a paste, so the paths stay text (no `[Image #n]`, no `keepImagePaths`) and the model reads the files itself. A slash command is refused (`peer_command`): the inbox would hand `/exit` to the model as words. The send counts once the transcript shows the session took it (a `queue-operation` or a peer line with the words, within 6 s); one the inbox read but the session did not take (held, dropped) fails as `peer_unconfirmed` with `delivered: unknown`, so the app neither marks it sent nor resends it. Refusals with nothing sent: `peer_unsupported` (unknown protocol, a path this platform does not dial), `peer_unreachable` (no inbox there, no key), `peer_too_long`. A claude with no inbox at all is refused as before (`open_elsewhere`). The hub words each code in the app's language (`rpc-errors.peer_*`).
+
+The session writes the message as a peer's: the transcript reader takes the user's words out of the envelope and the prompt (`prompts.PeerMessageBody`), shows them from "Persona", and the echo ties that line to the phone's `client_msg_id` (a peer line signed Persona is the only peer line that can be the user's send). It does not count as the user's prompt for `LastPromptAt`. In bypass permissions mode (what the desktop app's sessions often run in) every such message is held: the person at the computer approves it once in the terminal (or sets `"crossSessionInbound": "accept"` in that Claude Code's settings), and until then the phone says it is waiting there.
+
+Measured end to end on a throwaway `claude` 2.1.291 in an empty directory (its own `CLAUDE_CONFIG_DIR`, a pseudo console): with the default permission mode the message was taken in 0.15–0.3 s (also while a startup dialog was on screen) and answered in the transcript; a second message while it worked was queued and answered next; in bypass permissions mode the message was held, as above. The desktop app's sessions were not written to.
+
+### The desktop app's sidebar (#3304)
+
+The desktop app keeps an index of its Claude Code sessions, one JSON per session: `~/Library/Application Support/Claude/claude-code-sessions/<…>/<…>/local_<id>.json` (`Claude-3p` for the build on a third-party provider). Each names the transcript the session runs (`cliSessionId`), whether the session is archived (`isArchived`), and the transcripts it ran before (`priorCliSessionIds`: it went on in a new one). Its sidebar lists each unarchived session once, a side session nested under its parent.
+
+The offline list follows the sidebar (`node/claudedesktop.go`), before a row is counted:
+- it leaves out the transcripts of archived sessions (on the Mac measured, every finished /btw question was an archived session) and their earlier transcripts;
+- it leaves out an unarchived session's earlier transcript once the list has shown the one it runs now (newest first, so normally the current one comes first). When the current one is not listed, or the earlier one is newer, the earlier one stays: at worst a session shows twice, never not at all.
+
+It also lists the transcript every unarchived session of the index runs, however long it has been quiet and however little it says yet, as the sidebar does. These are counted on their own, recent or not: the newest 100, beyond the usual 7 days, taking none of the 80 places of the other sessions. One whose transcript has no title or directory yet (opened in the app with nothing said, or just gone on in a new transcript) shows the entry's `title` and `cwd`. Another platform's runs (`agentfilters.go`) stay out even when the index names them. Only what an entry says is acted on: a transcript no entry names, or an entry that cannot be read (or is over 4 MB), hides nothing. A kept session and Persona's own forks are listed as before, and running sessions are untouched (their questions and permission prompts must stay reachable). A session archived in the app and later resumed elsewhere under the same transcript leaves the offline list once it stops, as the sidebar does; unarchiving it in the app lists it again. Unarchived side sessions and /btw questions are rows of their own here. Only these files are read, never the app's config file (it holds credentials); a file is parsed again only when it changed. Only macOS's layout is known. Tests: `node/claudedesktop_test.go`.
+
+### Sending to a desktop session nothing runs (#4300)
+
+`node/claudedesktop_open.go`. A message to a session the sidebar lists (an unarchived entry of the index) goes back to the app when no claude runs it. Before, it was resumed with `claude --resume` in a terminal tab, so the session ran outside the app, and on a machine without a terminal engine it was refused.
+
+- **Opening it:** the node opens the session at the app's own link, `claude://claude.ai/epitaxy/<sessionId>`, in the background (`/usr/bin/open -g`). The link uses the entry's `sessionId` (`local_<uuid>`), and only in that form. One app keeps both directories (`Claude` and `Claude-3p`), and it handles `claude://`.
+- **What the app does:** it starts that session's claude, with its peer inbox, without coming to the front or changing what its window shows. This takes about 3 seconds on a Mac (Claude Code 2.1.321, 2026-11-11).
+- **Sending:** once that claude runs and its inbox socket is there (up to 30 seconds), the message goes to the inbox as above, and the turn shows in the app.
+  - If the app goes on in a new transcript as it opens the session, the node follows the one the entry names.
+  - A claude seen without an inbox is given 3 seconds to name one.
+  - In bypass permissions mode the message is held there like any message to the inbox (`crossSessionInbound`).
+- **Refused, with nothing sent:**
+  - Another claude has the session open (a terminal's without an inbox, a program's): `open_elsewhere`, as before, never a second claude.
+  - The app does not open it in time: `desktop_open_failed`.
+  - A slash command: `peer_command`. The inbox runs none, and resuming it in a terminal would take the session out of the app. `/exit` is handled as before.
+  - The app's claude has no inbox (an older Claude Code): `peer_unsupported`, the session left open in the app.
+- **The old way:** when the link cannot be opened at all (no app handles it), nothing was started, and the session is resumed as before. So is any session the index does not list.
+- **Launcher and model:** the app resumes the session with its own settings. A launcher or model picked on the phone for resuming does not apply to it.
+- Tests: `node/claudedesktop_open_test.go`.
+
+## Blocking configuration directories (#676)
+
+Platform sessions sharing a configuration directory with personal sessions (cannot separate directories) are filtered by that platform's extension using in-session markers; see `docs/extensions/extensions.md` (“Agent filtering”).
+
+Some computers run automation scripts launching Claude with a separate `CLAUDE_CONFIG_DIR`, creating a session every few minutes. Node's 30-second environment scan discovers and reports these directories; hub stores them in settings `claude_dirs/<machine id>`, filling Agents with offline automated sessions. Deleting records does not help: the next scan restores them. Do Not Disturb (`/api/v1/mutes`) works per space / session, not a constantly growing set without spaces. Therefore **block** configuration directories per machine:
+
+- Rules in hub settings: `claude_dirs_blocked/<machine id>`, a string array. Each is a path or `filepath.Match` glob (`~/.automation/*`), starting with `/` or `~/` (`~` is that computer's home). Match directory itself or its ancestor; blocking `~/.automation` also blocks descendants. Shared hub / node function: `proto.ClaudeDirBlocked`.
+- Node (`node/claudedirs.go`): `node.configure` includes `claude_dirs_blocked`. `claudeConfigDirs()` skips matching directories, comparing original and resolved paths. Every directory lookup (offline sessions, transcript by ID, usage, memory, settings page) uses it, so blocked directories are not read. Scanned directories remain in memory for immediate unblocking, but **are not reported**; unblocking reports previously withheld directories once. Node's default directory (`$CLAUDE_CONFIG_DIR` or `~/.claude`) is never blocked; Persona-started sessions live there.
+- Hub (`devices/claudedirs.go`): remove blocked directories from `claude_dirs` sent to node (hub.json + remembered); do not store blocked `claude.dirs` reports (old nodes still report them). Rule changes remove blocked stored records, reconfigure online nodes, and fetch `sessions.list`; broadcasts update the app. Offline nodes receive configure on next connection.
+- Hides only; **does not delete files**. Unblocking returns sessions under the original rules (last 7 days, at most 80 offline sessions).
+- Limits: running Claude in herdr remains listed even with its config directory blocked—that is a terminal in use. Old nodes do not understand `claude_dirs_blocked`; hub can only avoid storing / sending directories, while scans still list sessions. Full effect needs updated node. Existing knowledge archives are unchanged.
+- APIs: `GET /api/v1/machines/{mid}/claude-dirs` (node `claude.dirs.list`: each directory, source, session count, running count, blocking rule; offline / old node falls back to hub records, `live: false`); `PUT /api/v1/machines/{mid}/claude-dirs/blocked {"blocked": [...]}` replaces all rules and returns new state.
+- UI: Settings › Claude Code (iOS `ClaudeDirsSection`, web `settings/ClaudeDirs.tsx`), Blocked Configuration Directories. One row per directory with Block / Unblock. Glob-blocked rows say “Blocked by Rule …”; unblocking deletes the rule and restores all directories it covers. Manual rule entry below. Assistant uses `persona_settings` `agents.blocked_claude_dirs` get / add / remove, with phone confirmation before changes.
+- Why no Block This Directory on individual Agents list sessions: Session lacks config-directory data (would need `proto.Session` and every client changed); users usually block the source of a whole batch, clearer in directory settings with counts / running status. A later session-menu entry can reuse the API.
+
+## Hooks (injected only into Persona-started sessions)
+
+At startup, node writes the same hooks twice, using its own binary's `hook` mode (`node/hooksplugin.go`):
+
+- **Plugin** `~/.persona/claude-hooks/` (`.claude-plugin/plugin.json` + `hooks/hooks.json`, plugin name `persona-hooks`): local Claude Code ≥ 2.1 (same check as `agent-plugin`, `node/agentplugin.go`) gets `--plugin-dir`, loaded only for this session. Multiple `--plugin-dir` values compose with the launcher's own `--settings` / `--plugin-dir`, whereas Claude Code accepts only the last `--settings`. Launcher aliases / functions often keep gateway, key, model in their own settings; Persona's additional file replaced it and Claude requested login (#1411). Therefore Persona passes settings only for its own managed launchers (gateway environment only, `docs/integrations/launchers.md`).
+- **Settings file** `~/.persona/claude-settings.json`: older Claude Code, unreadable version, or plugin-write failure gets `--settings`, merging alias-provided settings.
+- **Live replies plugin** `~/.persona/claude-live-replies/` (plugin name `persona-live-replies`, only `MessageDisplay`): written beside `claude-hooks` whatever the setting says; an Agent's start (and its herdr resume command) adds its `--plugin-dir` only while the computer's **Settings › Claude Code › Live replies** is on, and only when the hooks go in a plugin. See "Live replies (MessageDisplay)".
+
+Tested 2026-11-04 with Claude Code 2.1.318: plugin hooks behave like settings hooks. SessionStart, UserPromptSubmit, Stop trigger; PreToolUse deny and PermissionRequest allow both work in interactive and `-p` modes.
+
+| Event | matcher | Purpose |
+| --- | --- | --- |
+| PreToolUse | `AskUserQuestion` | Let Claude show its terminal dialog (duplicate question texts are still denied) |
+| PreToolUse, on a Mac | `mcp__.*cua.*__.*`; Agents also `Bash` with `--cua-only` | An Agent's own Cua Driver never operates System Settings or macOS's permission prompts: denied at once with the reason, no card (`server/internal/node/cua_gate.go`, #4349; `../extensions/computer-use.md` "c) Per-App approval"). The Agents' Bash entry goes to the node only for commands mentioning cua-driver; any other returns at once (`nodeclient.CuaOnlyFlag`). The assistant's Bash hook (the Feishu gate) takes them to the same check |
+| PermissionRequest | `*` | AskUserQuestion → phone card while the terminal can also answer; ExitPlanMode → plan approval; others → tool authorization |
+| PostToolUse | `AskUserQuestion` | A terminal answer withdraws the waiting phone card |
+| Notification / Stop / UserPromptSubmit / SessionStart | — | Report only, record pane; hub sends completion push from session state changes, not Stop |
+| Stop, a turn that did work and has no closeout | `decision: block` once, with the closeout form | Only with the `closeout` triage switch on; never twice in a row (`../assistant/agent-work.md` "Closeout") |
+| SessionStart, in an engine pane | `hookSpecificOutput.additionalContext` with the closeout form | Only with the `closeout` triage switch on: the manager is asked once per session and the hook waits at most 1.5 seconds for it; never an assistant conversation, a subagent or a report-only session (`../assistant/agent-work.md` "Closeout") |
+| MessageDisplay | — | The Agents' live replies plugin only (not the hooks plugins, not the settings files), loaded while the setting is on: pass the reply's lines to node, exec form (`command` + `args`, no shell), `async`, timeout 1, prints nothing; see "Live replies (MessageDisplay)" |
+
+Test results:
+
+- **`AskUserQuestion` on both ends** (#2382, measured on 2.1.319 in an isolated pty with logging hooks): PreToolUse gives no decision and Claude draws its dialog. About 60 ms later PermissionRequest arrives for the same call **without `tool_use_id`**; its hook can keep waiting for the phone without hiding that dialog. A phone answer returns `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow","updatedInput":{...original input, "answers":{"<original question>":"<label>"}}}}}` → model receives `Your questions have been answered: "Which color?"="Blue"`. Join multiple labels with `", "`; custom text is a direct string.
+- **Terminal answer cleanup**: answering in the terminal while PermissionRequest still waits completes the turn but does not end that hook. PostToolUse then carries the original `tool_use_id`, the original input plus `answers`, and the result. Node carries PreToolUse's id into PermissionRequest, removes `answers` to match the original session / Agent / tool / input, and completes every overlapping waiter of that id. A completion that arrives first is kept for that id through the hook / reconnect lifetime; a late receipt for an older identical question cannot cancel a newer one. The hook attempt remembers this pairing across reconnects: a resumed PermissionRequest reuses its own id and never consumes the next question's pending id, even when the two requests overlap or identical PermissionRequests arrive out of order. If the Node that saw PreToolUse was replaced, an unambiguous recent transcript tool_use / tool_result restores the pairing; multiple possible calls hand that ambiguous generation to the terminal and withdraw its restored cards until each PostToolUse arrives, instead of borrowing an id or waiting for a completion that may never come. Standby replay applies the same PreToolUse / PermissionRequest / PostToolUse lifecycle at the spool timestamps, including events whose stale hook.event is dropped, so a terminal answer taken while the manager was away stays answered. A PostToolUse after a phone answer does not suppress the next question, whose id differs. Real Claude probe: the terminal showed the question during the PermissionRequest wait, accepted the hook's answer, then emitted PostToolUse with the same PreToolUse `tool_use_id`.
+- **Queued messages** (#6088, measured on 2.1.319 in an isolated session; the send-now hint measured again on 2.1.311 for #2467 and on 2.1.321 for #4537): a message typed while Claude works waits in its queue (`queue-operation enqueue`) and goes into the running turn at the next tool boundary ("The user sent a new message while you were working"), so Persona's queue already steers at a safe point. Under the prompt Claude shows it with a send-now hint naming the key: 2.1.319 put "ctrl+x ctrl+s to send now" after the message on its line. That key, during a command, moves the command to the background (it keeps running and reports back as a background task) and delivers the message at once; while a reply is being written, the request is asked again with the message added. Esc instead interrupts the command ("The user doesn't want to proceed with this tool use"), then sends the queue. Persona's "Send now" presses the key the hint names (`sendNowOffer` in `server/internal/node/sendnow_hint.go`; `session.queue.send_now`, `docs/protocol/protocol.md`).
+  Headless (`claude -p --input-format stream-json`, a Persona chat; measured on 2.1.322 for #4342): the transcript's `queue-operation enqueue` carries no content, so the queue can't be read from it. A user line with a `uuid` gets `command_lifecycle` lines on stdout with that `command_uuid` (`queued`, `started`, `cancelled`, `completed`; one absorbed mid-turn is `started`). The control request `cancel_async_message {message_uuid}` answers `{cancelled}` (false once it went in), and `interrupt {send_now: true}` answers `{send_now: "stopped", still_queued: [...]}` and starts the waiting messages at once (`server/internal/node/assistant_queue.go`).
+  - **2.1.311** (#2467, macOS, a herdr pane, a throwaway session in an empty directory): the hint is its own dim line under the queued message, read off the screen as `❯ <the message>` then `  ctrl+enter to send now`. 2.1.311 binds both `ctrl+x ctrl+s` and `ctrl+enter` to send-now (`chat:sendNow`) and its hint names ctrl+enter only where the terminal reports extended keys and is not inside tmux or screen (`$TMUX` / `$STY`); the same binary started with `STY` set showed `ctrl+x ctrl+s to send now` on that line instead. herdr's key names `ctrl+enter` and `ctrl+x ctrl+s` each sent the queue (the hint went within a second, and the transcript got "Command was moved to the background (ID: …) so that a message that arrived while it was running can reach you" and `queue-operation remove`), and so did the CSI u bytes `ESC [13;5u` (`ctrl+enter` for Orca's raw writes); a plain Enter on the empty prompt left the queue as it was. A hint Persona doesn't know is refused as `send_now_unrecognized` with nothing pressed, not as a Claude Code to update.
+  - **2.1.321** (#4537, Linux, a herdr pane and tmux inside one, a throwaway session with `"tui": "fullscreen"`; fixtures `server/internal/node/testdata/claude-2.1.321-send-now-*.txt`): the hint is unchanged, `ctrl+enter to send now` in the herdr pane and `ctrl+x ctrl+s to send now` in tmux, each on its own line under the message, and each key sent the queue (`queue-operation remove` with `reason: "absorbed_mid_turn"`). The bundled code builds the text from the binding (`${keys} to send now`, lower case, `click to send now` when no key is bound), and 2.1.311, 2.1.318, 2.1.319 and 2.1.321 pick the key the same way. The node reads the hint by that shape rather than as fixed text: keys, an optional separator, `send now`. Keys a terminal can't send (cmd, fn, a click) are quoted and not pressed. In the fullscreen renderer the queued message and its hint scroll with the transcript: scrolled up (PageUp, the wheel), the screen shows only `Jump to bottom (ctrl+End) ↓` (on macOS `(click)` or `: fn+↓ to scroll`; `N new messages` once more arrived) and `❯ Press up to edit queued messages`. ctrl+End, Claude Code's default `scroll:bottom` in 2.1.311 and 2.1.321 alike, brings the end and the hint back, so the node presses it (the key the pill names, else ctrl+End) before looking again. herdr 0.9 has no key name for End, Home or the page keys, so the node writes their xterm bytes (`ESC [1;5F` for ctrl+End) with `pane.send_text`.
+- **`Notification` is late, and cancellable** (measured Claude Code 2.1.2xx, re-check on the installed version): `permission_prompt` arrives about 6 s after the dialog is already on screen, and if the dialog is answered first the notification is cancelled and never arrives. `idle_prompt` comes about 60 s after the input box goes idle. Both are reporting only: a card must never wait for them, and "needs you" cannot be derived from `Notification` alone. State comes from the session (transcript, status line, screen); the notification is a hint with a delay measured in seconds.
+- **`MessageDisplay`** (undocumented) carries a reply's lines as Claude shows them, before the transcript has them: measured and used for the Agents Persona starts, see "Live replies (MessageDisplay)" below.
+- **Claude's own safety checks ignore a hook's allow** (#3752, measured on 2.1.322 in a pty with an empty settings directory and a throwaway hook):
+  a Bash command such as `cd <elsewhere> && rm -rf ./* ./.[!.]*` is asked about even in bypass mode ("Dangerous rm operation on
+  statically-unresolvable target …", "⚠ Claude Code will automatically block this request in 1:59, to avoid holding up an unattended
+  session", 1. Yes / 2. No). Claude runs the PermissionRequest hooks for it, so the phone gets a permission card, but an `allow` (with or
+  without `updatedPermissions`) leaves the dialog on screen and the countdown going; a `deny` closes it ("Denied by PermissionRequest hook").
+  Node therefore follows the pane after every allow it hands a hook; a dialog still there lists the Agent as blocked and the phone gets the
+  dialog itself as a screen card (`docs/protocol/agent-states.md`, "An allow Claude did not take"). The screen card's `rev` leaves the
+  countdown out (#571), so the answer holds while it ticks.
+- **ExitPlanMode uses PermissionRequest, not PreToolUse** (PreToolUse matcher does not trigger in bypass mode).
+  - Approval: `decision: {behavior: "allow", updatedInput: <original input>, updatedPermissions: [{type: "setMode", mode: "bypassPermissions", destination: "session"}]}`. **Plain `{behavior: "allow"}` does not work; TUI still asks “Would you like to proceed?”**
+  - **The mode after the plan (#3784)**: a session started in plan mode records the mode it goes on in once its plan is approved (`plan_then` on `session.start`, kept in the node's session state): what a writable start with no mode of its own would run in (the assistant's default permission mode, else the computer's Claude Code `permissions.defaultMode`, else Ask every step), filled in by the manager for the apps' New Agent, `task_plan`, `agent_start` and dispatched tasks. A card answer that names no mode sets it (Allow All when none was recorded, as before). The terminal's own dialog may decide the plan while the card still waits, so the node watches the footer from the moment the card is raised until the card is answered, for at most 10 minutes (a plan approved there with "manually approve" is followed at once by a permission dialog that hides the footer until it is answered): once the footer shows a mode other than plan, the plan was approved there, and the node presses the session over to the recorded mode when the dialog picked another (`server/internal/node/planthen.go`). A plan sent back stays in plan mode and is left alone. When the recorded mode is Allow All the session is started with `--allow-dangerously-skip-permissions` beside `--permission-mode plan`, so that mode is in its shift+tab cycle: the hook's `setMode`, the correction above and a later `…/modes` call can all reach it. The same watch runs for every plan card, with or without a recorded mode: the plan dialog hides the footer, so once the footer is back the terminal decided the plan (approved or sent back) and the card that still waited is withdrawn as `dismissed` (decided on the computer), where a hook that merely went away is `cancelled`. So a plan's history says where it was decided: `answered` on a card, `dismissed` in the terminal.
+  - Return for changes: `{behavior: "deny", message: "…revision feedback"}`; message becomes an is_error tool_result, and the model revises and resubmits.
+- The user's launchers all include `--dangerously-skip-permissions`, so ordinary tools do not trigger PermissionRequest; without it, every tool call goes to the phone.
+- Plugin / settings hooks are read only at startup; changes require restarting Claude. Hook command itself executes anew each time.
+- Waiting more than 30 minutes (`hook_timeout_minutes`) or unable to connect to node → no output, normal TUI dialog. Phone can also choose Hand to Terminal on the Computer. If node disappears while waiting (hub / node redeployment), hook reconnects to the next node, preserving the phone card (`docs/protocol/protocol.md`, “Interactions survive restarts”). Killed hook (user Esc on computer) → node detects socket closure → tells hub to revoke interaction.
+- **Another PermissionRequest hook answered first** (#2648): Claude Code runs all PermissionRequest hooks concurrently; first allow releases the operation, but **other hooks are not terminated**, running to their own timeouts (tested 2.1.308). Persona hook still waits for phone, leaving a stale card. The answering hook can notify node.sock (`~/.persona/node.sock`, used by `personad hook`) with one line `{"kind": "hook.decided", "input": <original Claude Code PermissionRequest input>}`, receiving `{"ok": true}`. Node identifies invocation by session, sub-Agent, tool, input: withhold an unsent card or revoke an existing one (`node/hookdecided.go`).
+  Each `hook.decided` covers one invocation (#4646): earliest waiting matching card; if none, first matching request within 2 minutes, deleted after use. Later identical calls still go to phone. Once a hook on that computer has reported this since node startup, tool permission cards wait 1 second before dispatch to avoid push-then-immediate-revoke. Other computers retain no delay. The claude-bypass-allow extension (automatically allows Bash safety confirmations in bypass mode) uses this.
+
+### Self-check: `personad node doctor`
+
+Hooks, MCP, and skill-plugin files are generated at node startup; damage gives no warning (hook cannot connect to node and falls back to TUI; see the deleted `node.sock` entry in `docs/lessons/server.md`).
+
+The generated `mcp.json` retains both built-in compatibility namespaces: ordinary Agent starts and resumes share this
+file, and generation precedes the hub handshake. Doctor checks and repairs that same configuration. The
+`persona_contracts_v1` optimization applies to per-process assistant configurations instead ("Headless assistant"
+below; [rolling-upgrade-compatibility.md](../protocol/rolling-upgrade-compatibility.md), "MCP namespace / tools").
+
+`personad node doctor [--json] [--fix]` performs read-only checks on this computer (`node/doctor.go`). One line per check (`正常｜名字：发现了什么；怎么办`—“OK | Name: finding; remedy”), same format as hub doctor; `正常` / `注意` / `有问题` (“OK” / “Attention” / “Problem”) correspond to JSON `ok` / `warn` / `fail`. Any fail yields a nonzero exit code (hub doctor has no `--json` and does not use exit status):
+
+| Check | Content | Status |
+| --- | --- | --- |
+| `node.sock` | File exists and `{"kind":"ping"}` receives a response through real `serveSock` | Missing / unreachable: fail |
+| `runtime.sock` | File exists and connects | Missing: warn (ignore if runtimes unused); unreachable: fail |
+| `claude-settings.json`, `claude-hooks` (with `claude-live-replies/`), `assistant-settings.json`, `assistant-hooks`, `mcp.json`, `agent-plugin` | Byte-for-byte compare with **what this binary would generate now**: current / stale (different or plugin files missing, identified in items) / missing | stale: warn; missing hooks / settings / MCP: fail; missing `agent-plugin`: warn (only persona-office skill absent) |
+| `command-paths` | Hook / MCP commands in those files (first word parsed following `shellQuote` syntax) point to existing executable programs | Unusable: fail |
+| `claude-version` | Local Claude version ≥ `pluginMinVersion`, supporting `--plugin-dir` | Unreadable / too old: warn (`--settings` fallback still works); read nothing although the shell found claude: warn with state `unanswered`, which readiness treats as unknown rather than missing |
+| `herdr` | Herdr API socket connects | Unreachable: warn; engine selected by hub on connection, not stored locally; ignore for other engines |
+| `global-permission-hooks` | Count and commands, truncated to 80 characters, of synchronous non-async `PermissionRequest` hooks in user's `$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude`) | Present: warn; other approval hooks block requests alongside phone approvals; **inspect only, never modify** |
+| `agent-sandbox` | Whether the agent sandbox is on, whether this machine can run it, each kind of start's last status (`docs/server/agent-sandbox.md`) | On but unusable / skipped: warn |
+| `launchd-process-type` (Mac only) | The resident node's installed LaunchAgent in `~/Library/LaunchAgents` has `ProcessType=Interactive`, and launchd runs it that way (`launchctl print`: `spawn type = interactive`). When both supported definitions exist, inspect the one launchd has loaded (docs/server/server.md "Scheduling and privacy on the Mac") | Missing / other value / loaded from an older plist: warn; no agent: ok |
+| `path-access` (not on Windows) | Reads what a claude start reads (Claude Code's directory, `settings.json`, `settings.local.json`, `CLAUDE.md`, the symlinks in `skills`, `commands`, `agents`; each working directory and its `.claude/` ones) in a child that is killed after a 3 s stall (a whole run: at most 15 s); asked of the running node when there is one | Blocked in Claude Code's directory: fail; only in a working directory: warn |
+
+- Comparison and `--fix` share `generatedFiles`; startup `writeClaudeConfig` and fix use `writeGeneratedConfig`, so current means what node restart would write. `agent-plugin` comparison lives in `assistantskills.PluginIssues`; `WritePlugin` now skips only when no differences are reported (previous stamp-only check never repaired deleted files if the stamp remained).
+- Fix rewrites only Persona-generated files, only when stale / missing, and reports fixed. On a Mac, the command line's `--fix` also writes `ProcessType=Interactive` into the resident node's LaunchAgent and reloads it (the node restarts; the checks after it wait up to 15 s for the node's sockets to answer again); `node.doctor.fix` and a doctor running under that agent leave it alone and say so (docs/server/server.md "Scheduling and privacy on the Mac"). Does not touch global user settings or rebuild node sockets; restart node for that. **Use the binary actually running node**: generated files contain the current binary path; another binary's fix redirects hooks to itself.
+- JSON: `{"ok", "dir", "checks": [{"name", "status", "state", "detail", "hint", "items"}], "fixed": []}`. Fields always present, lists never null, check names and order fixed (`TestDoctorJSONIsStable`).
+- Web machine page “What This Computer Can Do” (#2429) receives the same report via `node.doctor` / `node.doctor.fix` (`node/doctor_rpc.go`), full-role devices only. Capability grouping rules: `docs/server/machines.md` (“Doctor: what this computer can do”).
+- Hub doctor covers hub configuration / network, not these files. Node checks live in node doctor, not hub doctor.
+- Tests run in temporary directories (`node/doctor_test.go`); manual fix uses temporary HOME, not real `~/.persona`.
+
+## Live replies (MessageDisplay)
+
+On the phone and the web, an Agent's reply used to appear only once Claude wrote it to the transcript, often seconds after it was on the terminal; a reply that ends in an auto-approved tool call is written only once the tool is done. Claude Code's undocumented `MessageDisplay` hook carries the reply's lines as Claude shows them. The Claude sessions Persona starts register it through a plugin of its own, `claude-live-replies` (#1309), while the computer's setting **Settings › Claude Code › Live replies** is on (the default); the user's own sessions, the global report-only hooks and the headless assistant (which streams its own replies) never do. Claude reads plugins when it starts, so a change of the setting reaches the sessions started after it; a session already running keeps what it started with until Claude restarts (herdr's restore included: node gives herdr the resume command again with the plugin added or dropped; a pane's resume reports take turns and each says the pane's newest command, so turning it off and on again quickly cannot leave herdr the older one).
+
+### Measured (Claude Code 2.1.319, isolated pty runs with a per-run `--settings`; the event is also in 2.1.318)
+
+- **Input**: `session_id`, `transcript_path`, `cwd`, `prompt_id`, `hook_event_name: "MessageDisplay"`, `turn_id`, `message_id`, `index` (int), `final` (bool), `delta` (string). No `permission_mode`, `effort` or `agent_type`; no `agent_id` in a main conversation (subagents not measured).
+  ```json
+  {"session_id":"<id>","transcript_path":"<home>/.claude/projects/<project>/<id>.jsonl","cwd":"<work-dir>","prompt_id":"<uuid>","hook_event_name":"MessageDisplay","turn_id":"<uuid>","message_id":"<uuid>","index":0,"final":false,"delta":"First line of the reply.\n"}
+  ```
+- **Increments, not the whole text**: `delta` holds only the lines completed since the last batch. A non-final delta is whole lines ending in `\n`; the final one may end mid-line (the reply's last line arrives only with it), and is empty when the message ends on a newline (from the binary's schema, not seen). The deltas of one `message_id` joined in `index` order equal the transcript's text block exactly (9 of 9 messages). Only text: thinking and tool calls send nothing.
+- **`index` is the batch number**, not a content block: 0, 1, 2… within the message, exactly one batch with `final: true`. (An earlier note said it was the content block index; that was wrong.)
+- **Ids**: `message_id` is a random UUID per message on screen, the same for all its batches, never the transcript's `msg_…` nor a line's `uuid`. `turn_id` is new each turn, shared by its messages, and appears nowhere in the transcript. Only `prompt_id` matches: it is the turn's user line `promptId`, and `UserPromptSubmit` and Stop carry it too (assistant lines have none; they reach it through `parentUuid`).
+- **Messages**: each API reply is a message. The words before a tool call and those after its result are two messages, the second with a new `message_id` and `index` from 0, the same `turn_id`. The first one's last line comes with its final batch only once the tool call's arguments are streamed; nothing comes while the tool runs.
+- **Pace**: a batch only when a line is completed, at least 100 ms apart (the binary: at most 10 a second); the final batch is not held back. Long lines came about one per batch, 0.55–0.75 s apart, at the model's pace; 80 short lines came in 14 batches of 1–16 lines over 1.7 s.
+- **Concurrency**: at most 3 hooks run at once; when 3 are busy, new lines wait and go out as one batch. Hooks finish out of order, so batches arrive out of order.
+- **The terminal waits for the hook.** `MessageDisplay` hooks run in the foreground even with `async: true` (the debug log: "Detected async hook but forceSyncExecution is true"), and once any is registered the TUI shows a reply batch by batch instead of token by token, each batch only after its hooks are done (a 2 s hook delayed every line 2 s; a 12 s hook ran its full 12 s with a 30 s timeout). A hook's `hookSpecificOutput.displayContent` replaces the lines on screen (not the stored message). So the hook must pass the lines on and exit at once, printing nothing.
+- **Ahead of the transcript**: up to 6.6 s for a reply that ends in a tool call (its text is written with the tool's result), 0.4–1.6 s for a plain reply's first lines. But the transcript can be first: before the final batch, and for a message that arrives in one piece even before the first batch. Line `timestamp`s are 0.14–3.34 s off from when the line is written.
+- **Stop is not last**: with a slow hook a Stop came before the final batch; a batch still running when Claude exits is dropped.
+- **Not every turn ends with a Stop** (from the binary and earlier measurements, not measured with this hook): Esc (and Persona's stop) fires no Stop, the transcript gets `[Request interrupted by user]`; a turn a model error ended fires `StopFailure` ("Fires instead of Stop when an API error … ended the turn", fire-and-forget) and the transcript gets the error as the answer (`API Error: …`) or a given-up `api_error` line.
+- **`-p`**: each API message comes once, `index` 0 and `final: true`, the whole message (several text blocks joined), 0.14–0.42 s before the transcript.
+- Not measured: after compaction, subagents (`agent_id`), an empty final delta, plugin registration (`--plugin-dir`; plugin hooks behaved like settings hooks before), the default 10 s timeout cutting a hook, an interrupt or a model error while a message is on screen.
+- Older Claude Code versions without the event: 2.1.319 drops an unknown hook event with a warning and keeps the others; how much older versions accept is unverified, as for Elicitation. The settings file (Claude Code older than 2.1) does not register it.
+
+### How it is used
+
+- **Hook** (`server/internal/nodeclient/hook.go`): for a `MessageDisplay` input, `personad hook` sends `{"kind":"hook.display","input":…}` on `node.sock`, waits at most 150 ms for `{"ok":true}` and prints nothing. The node answers before it does anything with the lines (within a millisecond), so a hook that gave up after writing them still had them taken. The registration is `async: true`, timeout 1 s (seconds; Claude Code then shows the lines as they are), in exec form so that no shell starts for each batch (below).
+- **What the terminal pays**: once the hook is registered, a Persona-started session's TUI shows each reply a batch of whole lines at a time instead of token by token (the batch ends at a line's end, at most 10 a second), and each batch is drawn only after one `personad hook` run, whether or not anyone has the session open. The user decided (2026-11-07) to ship it on by default with a switch to turn it off.
+  - **How long a run takes** (wall time from exec to exit for one MessageDisplay input, 100 runs each, medians with p90, Apple silicon Mac, Go 1.27, 2026-11-07): `personad hook` 28.0 ms (p90 30.6) without a node socket and 28.6 ms (p90 31.0) with a fake node that answers at once, before; 12.0 ms (p90 13.8) and 13.0 ms (p90 14.2) after. `persona-node hook` 25.8 / 25.5 ms before, 12.2 / 11.4 ms after. A Go program that only reads its stdin takes 7.5 ms on the same machine, a Python hook 90–260 ms. Almost all of the difference was package initialization of the server it links (15–18 ms and 13–16 MB allocated before, which also set off four garbage collections; 3–4 ms, 1–1.6 MB and none after): the i18n catalogs (`extension.UISlots` and `assistant.silentTurnError` called `i18n.T` in package variables, so the lazy catalogs were parsed at every start anyway), every prompt template (`prompts`), about 440 package-level regexps (now `internal/lazyre`, compiled on first use; its guard test keeps new ones out) and the built-in model presets. What is left is the runtime and third-party packages' init (goldmark, the tailnet stack).
+  - **The shell in front of it**: those numbers are the program alone (exec to exit). A hook whose `command` is a command line (shell form) runs as `/bin/sh -c "<command>"`; on the same Mac that adds 6–8 ms to every batch (2026-11-08, 100 runs each, a fake node answering: `personad hook` 12.0–12.7 ms alone, 19.2–20.2 ms through `/bin/sh`, p90 13.3–14.4 / 22.7–24.1; `persona-node hook` 11.0–11.5 / 18.0–18.9 ms; the stdin-only program 5.5 / 11.4 ms). So the MessageDisplay hook is in exec form, `{"command": "<personad>", "args": ["hook", "--persona-home", "<node directory>"]}`: Claude Code starts the program directly (checked on 2.1.319 in a `-p` run with a probe plugin: the exec-form hook got `[<program>, "hook"]` with the caller's `SHLVL` and a path with a space in it worked, the shell-form one ran under a shell, `SHLVL` one higher). Every Claude Code with the event takes exec form (the darwin-arm64 builds: 2.1.110 has neither, 2.1.150 exec form only, 2.1.200, 2.1.250, 2.1.300, 2.1.318 and 2.1.319 both). Persona's other hooks stay in shell form: the settings file is also for a Claude Code older than 2.1, and they do not hold up the screen. They name the node's directory with `PERSONA_HOME=<dir>` in front of the program; exec form has no shell to take that and a command hook has no `env` field (2.1.319's schema), so this one gets it as an argument, `--persona-home` (`nodeclient.HomeFlag`). A batch on a Mac therefore waits about 12–13 ms for the hook; a separate tiny hook binary would get to about 6–8 ms, but it would need its own install and update path on every platform, so it was not made.
+  - **The setting** is per computer, kept by the manager that owns it in the hub's settings table (Postgres, key `claude_live_replies/<machine id>`, on when unset): `GET` / `PUT /api/v1/machines/{mid}/claude-live-replies` `{"on"}` (`docs/protocol/protocol.md`), sent to the node in `node.configure {"claude_live_replies"}` when it connects and at once when it changes. A node that is never told (an older hub) keeps it on. The web has it in Settings › Claude Code (with "Change all online machines" like the other rows), the Apple apps in Settings › Claude Code Settings › Live Replies (with Apply to All Online Machines; `LiveRepliesModel`, `docs/apple/ios.md` "An agent's live reply"); a hub without the route (404) shows no switch in either. Both say the text comes sooner on the web and the iPhone and Mac apps, and what the terminal pays; an iPhone or Mac app older than #1309's Apple part does not draw an Agent's live text.
+- **Node** (`server/internal/node/livereply.go`): per session, the batches are put in `index` order and taken once; a batch of a message that ended, or of a turn a Stop ended (by `turn_id`), is dropped. Only while the hub watches the session, the node sends `session.delta {session_id, text}`: the message's text so far, minus what the transcript has, otherwise as it came. The check runs after each batch and right after each push of new items under the same per-session lock, so the `""` reaches the apps right after the items that replace the live copy.
+  - **Which words replace it** (`unlanded`): the transcript's text items of the exchange under way (after the last prompt or wake) are split by API message (a run of the agent's lines; a tool's result, a queued message, a compaction come between two). The newest message whose words begin like the live text is its own; its blocks are taken off the live text's start, an item that begins with the rest of it means all of it is in. A block counts only where a word ends (`好的` is not the start of `好的，测试已通过`). Two messages of a turn can begin alike ("I'll update the names." before and after a tool): the node keeps the turn's message before (its text from the batches), and words that begin like both are that one's until a later message has them too, since the one before lands first. A cut item (pages and pushes carry 24 KB of a long text) holds its whole block, `full_size` bytes; what goes past it is still shown. Words of a later message after its own mean the message is over.
+  - **When it goes**: a message whose final batch came and that the transcript has whole is done at once. Otherwise it belongs to its turn: when the transcript shows the turn over after the message's first batch came (the exchange opened after it by a prompt or a wake, `turn_duration`, an interrupt, a model error that ended the turn) it goes, which covers the turns that end without a Stop. Line timestamps are compared with when the first batch came, so the end of the turn before, read only after the next prompt's first batch, does not count. It also goes at the next prompt, 2–4 s after a Stop, when the session's claude is gone, and after 30 minutes without a batch. `StopFailure` is not registered: the transcript says the same, and the hub would get an event it does not know.
+  - **Nobody watching**: the hub is told `""` (it would hand stale text to the next page), but the message stays: a page that opens the session while Claude still shows it gets it back, once the watch's first read of the transcript has checked it with the rules above.
+- **Hub**: unchanged; it forwards `session.delta` as the `delta` push to the session's subscribers and keeps the latest for a page that subscribes mid-message (`docs/protocol/protocol.md`).
+- **Clients**: the live text is sent as it came (only what the transcript already has is taken off its start), so a client can match it to the item that replaces it by its start. The web draws `delta` for any chat with a live exchange (`web/src/lib/live-text.ts`, `docs/web/web.md`): an Agent's against the agent's latest message only (its words at the end of the transcript, with nothing after them), plus a whole copy of the message before come late; only the newest items touch it (an older page or an opened fold never does), and the live work row stays under it, since it does not move while a tool runs. The main chat keeps its rule: its reply's item ends it. The iPhone, iPad and Mac apps draw an Agent's the same way (`Shared/LiveText.swift`, a port of `live-text.ts` with its tests case by case; `ChatStore.agentStreamed`), under the newest items as the main chat draws its live text; a change that comes while the chat's rows are being rebuilt waits for them, so the words leave the live copy in the same pass their row comes, and it is dropped when the chat's subscription ends or starts again, since the `""` that ended it meanwhile went to no one (`docs/apple/ios.md` "An agent's live reply"); the watch does not. Android draws any chat's `delta` as a row matched to the transcript by its start (`ChatRealtimeState`); not checked with these sessions.
+- **Not verified yet** (acceptance items of #1309 still open): a side-by-side run on a real session through node, hub and web (text before the transcript line); the plugin registration (`--plugin-dir`) firing the hook; a session after compaction; an interrupt or a model error with a message on screen. The tests drive the node with recorded input shapes and the web with the fake hub (`MOCK_AGENT_LIVE=1`, `web/e2e/agent-live.mjs`).
+
+## Global report-only hooks (optional, off by default)
+
+Only Persona-started Claude sessions have its hooks (above). User-started herdr sessions rely on screen / transcript inference, fragile for TUI cards, multiselect, previews.
+`machines[].claude_global_hooks: true` in `hub.json` makes that node add report-only hooks to **default config directory** `settings.json` (`$CLAUDE_CONFIG_DIR` or `~/.claude`), so other sessions report turns and questions. Omitted means off; false / removal deletes Persona entries on next node connection. Manual `hub.json` changes require hub restart and take effect at node reconnect through `node.configure`, like botmux / herdr_autostart.
+
+**Why not install Persona's existing hooks globally**: global settings commonly already contain synchronous `PermissionRequest` hooks from other tools (a terminal-control hook, Orca). Another blocking hook stacks approvals: the first blocks subsequent hooks and the terminal dialog. Persona's question / authorization hook waits for phone (timeout 86400); globally, users at the computer cannot answer in terminal until phone response or timeout. Same reason `codex.md` does not use Codex `PermissionRequest` hooks.
+
+> **To re-test: a blocking `PermissionRequest` hook may not lock the terminal dialog.** Seen on Claude Code 2.1.221: the person at the computer could still answer, and a late `allow` from the hook still applied afterwards. Measured again on 2.1.319 for a handed-back `AskUserQuestion` (the bullet above): the dialog is already on the terminal and that waiting hook does not block it, although the turn goes on. If a blocking hook does not lock the dialog on the version in use, the "users cannot answer in the terminal" reason above is weaker than written. What still holds without it: a hook waiting on the phone leaves a card nobody can answer, and its late answer can arrive after the terminal's, producing two outcomes for one call. Re-measure on the installed version before relying on "the terminal is blocked"; keeping global hooks asynchronous stands on the duplicate-card problem alone.
+
+Therefore this global group:
+
+- **Report only**: SessionStart, `UserPromptSubmit`, Stop, Notification, plus `PreToolUse` / PostToolUse for `AskUserQuestion` / `ExitPlanMode` (card appearance / answer signals). Every entry `async: true`, `timeout: 10`; **no** `PermissionRequest`, Elicitation, or phone-waiting PreToolUse.
+- **No answers**: phone answers still use screen cards and keys (“Screen cards for multiselect questions”).
+- **Hook process**: command `<personad> hook --persona-global` (`runHook`). With no herdr / Orca pane variable (empty `HookPane`), or absent `node.sock`, **exit immediately without output**, no socket connection / wait. Connected waits at most 3 seconds; output always empty. Like plugin hooks, carries owning Claude PID / start time to protect counters from PID reuse.
+- **No duplicate reports**: Persona-started sessions already load persona-hooks. Node identifies session ID: `n.state` sessions (started, resumed, forked by Persona) and assistant sessions are excluded, including turn counting (`takesReport`, `node/hooks.go`). An environment marker would require modifying launcher commands with assignment before user shell functions, differing in fish / zsh, so not used.
+- **No pane binding**: global hooks never call bindPane. Tmux servers (botmux) inherit `HERDR_PANE_ID` into later Claude processes; binding would steal the pane from its actual Claude (see Session IDs and transcripts). Node finds session / pane associations itself.
+- **Not treated as Persona hooks by hub**: node `hook.event` includes `report_only: true`; hub does not add session to hooked / hasHooks. Otherwise screen cards wait 1.5 seconds for a hook card that will never arrive. `hook_event` broadcasts still refresh session run state (`../protocol/protocol.md`), and Stop `stop_sig` remains deduplicated.
+- **Still drive turn counting**: these are the only signals for user-started sessions; `UserPromptSubmit` / Stop enter node turn counters. State rules: `../protocol/agent-states.md` (“Hook turn signals”).
+
+**`settings.json` write rules** (`node/globalhooks.go`):
+
+- Add / remove only **marked entries**: command ends in `hook --persona-global`, unlike other tools. User hooks sharing a matcher group remain; remove only ours.
+- Idempotent: desired content already present → **no file write**, backup, or formatting change. Changed Persona binary path replaces old entries without duplication.
+- Preserve other keys, other hooks, order. JSON re-encoding follows existing indentation (first indented line, otherwise two spaces); inline arrays expand. Do not escape `&` / `<`. Preserve permissions; follow dotfile symlinks to real files without removing links.
+- Back up as `settings.json.persona-bak-<UTC time>` before actual changes. Nonobject JSON, nonobject hooks, or nonlist event → leave untouched, log only.
+- Do not create absent config directory (Claude not installed). Manage only default directory, not other profiles selected by `CLAUDE_CONFIG_DIR`; those belong to launchers.
+- Tiny race window with Claude Code writing settings simultaneously: temporary-file + rename prevents partial files, but can lose the other's latest write.
+
+**Why not `CLAUDE_CODE_PLUGIN_DIRS`** (2026-11-04, tested Claude Code 2.1.318): this variable **really exists**. Not in `claude --help`, but binary reads it. Absolute-path list separated by platform PATH delimiter (`path.delimiter`, `:` on Linux / macOS); `~` and relative paths skipped with warning. Merged with `--plugin-dir`, deduplicated. Error text says set in environment or settings env block, so `settings.json` env works too.
+Not chosen because it is **one variable**: another terminal-control tool already puts its plugin path in global env.CLAUDE_CODE_PLUGIN_DIRS. Persona would need to alter another tool's value, likely overwritten on reinstall; event-based hooks compose without replacement.
+Whether shell export is overridden by `settings.json` env was not tested. Without this conflict, users can add a Persona-generated plugin directory themselves.
+
+**Not verified**: actual Claude Code triggering of these entries (other local tools already use async settings hooks, so field valid, but these entries have not run in real sessions); separate `AskUserQuestion` / `ExitPlanMode` matcher groups rather than `|` follow other tools; Windows command quoting.
+
+## MCP elicitation hooks
+
+Read-only local verification on 2026-10-31: `claude --version` returned **`2.1.306` (Claude Code)**, matching the installed `package.json` version. This is the actual version used for this check; distinguish it from versions recorded earlier elsewhere in this document.
+
+The local native executable contains input / output schemas for Elicitation and `ElicitationResult`, `executeElicitationHooks` / `executeElicitationResultHooks`, and parseElicitationHookOutput. Inputs match hooks by MCP server name. Elicitation runs before the terminal dialog; `ElicitationResult` before returning the answer. This version already has integration entry points; development need not wait for an upgrade. Earliest supported older version is unverified.
+
+Verification: run `claude --version`, resolve the installation directory from `command -v claude`, read package metadata and those executable strings. No installed package, Claude configuration, or real session was modified; no model request was sent. Formats below come from local schemas and input construction, **not yet verified by a real MCP server triggering hooks**.
+
+Elicitation stdin:
+
+```json
+{
+  "hook_event_name": "Elicitation",
+  "session_id": "<session id>",
+  "transcript_path": "<transcript path>",
+  "cwd": "<project path>",
+  "permission_mode": "default",
+  "mcp_server_name": "example-mcp",
+  "message": "Please choose",
+  "mode": "form",
+  "requested_schema": {
+    "type": "object",
+    "properties": {"choice": {"type": "string", "enum": ["yes", "no"]}},
+    "required": ["choice"]
+  }
+}
+```
+
+Mode may be omitted, defaulting to form. URL mode replaces `requested_schema` with `"mode":"url"`, `"url":"https://example.com/confirm"`, and `"elicitation_id":"request_example"`. MCP `requestedSchema` / `elicitationId` become `requested_schema` / `elicitation_id` in hook input. Common fields may also include `agent_id`, `agent_type`, prompt_id.
+
+Hook exits 0 and writes stdout:
+
+```json
+{"hookSpecificOutput":{"hookEventName":"Elicitation","action":"accept","content":{"choice":"yes"}}}
+```
+
+Deny / cancel use `"action":"decline"` / `"action":"cancel"` without content. URL acceptance also has no content. `ElicitationResult` input includes `mcp_server_name`, optional `elicitation_id` / mode, action, optional content; output uses the same hookEventName. Persona registers only pre-action Elicitation, avoiding asking already answered requests again. Claude may restrict hook answers for particular servers; final behavior belongs to Claude.
+
+Persona integration contract:
+
+- Node-generated ordinary-session and headless-assistant configs both register Elicitation, matcher `*`. Running Claude must restart to load new registration.
+- Node places original schema / URL in `Interaction.elicitation`, forwarding MCP server name and sub-Agent source. Existing optional `tool_name` / `tool_use_id` stay, forwarded only if supplied upstream. This local event input construction **does not supply tool name, tool-call ID, or config source**; do not guess from the last call or server name. Other tool-permission hooks' `mcp_server:{name,source}` can supply config source.
+- Hub sends new types only to connections declaring elicitation in `client_hello.features`, never before handshake; first declaration replays still-pending requests. No compatible connection and no phone registered to be pushed one ([protocol.md](../protocol/protocol.md) "MCP elicitation", #2433) → immediately return dismiss; hook outputs nothing, Claude uses normal terminal flow. With such a phone the hook waits like a permission card's, and the terminal shows nothing for the request until it is answered or handed back.
+- Phone accept / decline / cancel pass through unchanged. Dismiss hands back to terminal, distinct from MCP cancel. Timeouts and node / hub interruptions reuse existing terminal fallback, reconnect, and interaction recovery. Request IDs distinguish hook-process attempts so repeated questions from one tool remain separate.
+- The iOS app declares it too (#2322: both modes, the link opening in its own link card; `docs/apple/ios.md` "Information architecture"); the Mac and visionOS apps don't.
+- Android declares capability and receives both modes; this worktree's `ElicitationFields.kt` still supports only form submission. URL-open-then-continue gating belongs to the UI workstream; this workstream did not change feature/chat. Real MCP round-trips, completed URL authorization, and older iOS device acceptance remain untested.
+
+## Screen cards for multiselect questions (2026-11-02, tested 2.1.316)
+
+User-started Claude via launchers, such as `--settings <profile>/settings.json`, does not load Persona hooks (injected only into Persona-started sessions above). AskUserQuestion appears in terminal, leaving only a screen card on phone. Previously screen cards missed multiselect: `[ ] 甲` (“A”) was treated as option text, number keys merely checked one option, and Submit was unrecognized, making submission impossible.
+Do not install hooks into user-owned config directories by default (optional report-only hooks above cannot answer either). Instead, screen cards now recognize and answer multiselect.
+
+Multiselect example (`server/internal/screen/testdata/claude-2.1.316-*`, recorded in isolated herdr, text replaced with placeholders; 环境 = environment, 平台 = platform, 手机 = phone, 手表 = watch):
+
+```
+←  ☒ 环境  ☐ 平台  ✔ Submit  →          Tab bar: one tab per question; ☒ answered; current tab indicated only by color
+示例二：哪些平台要一起发？                 Example 2: which platforms should ship together?
+❯ 1. [✔] 手机                            [ ] / [✔] are check states, not text
+  2. [ ] 手表
+  3. [ ] Type something                    Custom answer: entered text displays and auto-checks; clearing unchecks
+     Next                                 Submit for the only or final question
+──────
+  4. Chat about this
+```
+
+- Number keys (or Enter) toggle checks without moving the cursor. **On the custom-answer row, numbers become text; on Submit, numbers do nothing**—move back onto an option first.
+- Down from the last option reaches Submit, then Chat about this. Enter on Submit, or Right, opens Review your answers: each answer, Ready to submit your answers?, `1. Submit answers` / `2. Cancel`; unanswered questions add `⚠ You have not answered all questions`.
+- Answers join options in original order with `, `, custom answer last.
+- Sending multiple keys together loses keys (`send-keys 1 3` checks only one): send one key, wait for redraw.
+- Single-choice among multiple questions: no checkboxes, `Type something.` has a period, number selects and advances. Revisiting an answered question shows ` ✔` after selected option.
+- One single-choice question has no tab bar, with ` ☐ 环境` (“environment”) at top. Custom text replaces `Type something.`; Enter submits.
+
+Node answers (`node/dialogmulti.go`) by rereading screen at each step and computing exactly one key: toggle mismatched choices by number (first move Up to an option if cursor is on custom answer / Submit), then clear custom answer (`ctrl+e`, `ctrl+u`), type text, move to Submit / Next and Enter. On review, submit only if all questions answered and confirm review closes.
+Respect existing computer selections and mid-list / Submit cursor positions. Multiple-question single-choice still uses numbers; final review is submitted too.
+
+## Questions with previews (2026-11-04, tested 2.1.303)
+
+When AskUserQuestion options include preview, options are on the left and a right-hand box shows the current option preview. Footer: “Enter to select · ↑/↓ to navigate · n to add notes · Tab to switch questions”. No Type something; Chat about this has no number.
+Here **numbers move the cursor but do not select**; Enter is required. Number-only answering marked the card answered while the question remained on computer (2026-11-04: phone answer to second question had no effect).
+
+- Screen parser (`server/internal/screen`) recognizes the right-side option box (`┌` `│` `└`) as a preview question. Box contents and Notes: press n to add notes are excluded from labels / descriptions. Previously whole rows became labels; preview changes with cursor caused `prompt_changed` on movement. Each option now uses number + Enter.
+- On final question, submit the review as usual (`submitReview` in multiselect section above).
+- Deploy hub and node together after parser changes: otherwise preview-question rev differs and `prompt_changed` persists. Nonpreview dialog rev is unchanged.
+
+## Sending messages, interrupting, and keys
+
+- Send: `agent prompt <pane> <text>` (atomic paste + Enter, respecting bracketed paste). While Claude works, input enters its queue.
+- Images: save under `~/.persona/uploads/<date>/`, append `<attached_images>` tags with one path per line; tags distinguish them from user text. App shows square thumbnails above text.
+  Claude Code's paste turns a line that is only an image path, to a readable image file, into an `[Image #n]` (the model sees the picture) and drops the line,
+  so before Claude the node gives each path in the block that ends the message a second line `path:<path>`, which stays text: the agent knows where the file is (`keepImagePaths`).
+  No space after the colon: Claude Code before 2.1.316 cuts a pasted line at every space before `/` and attached the picture of `path: <path>` a second time (#4361); without the space it drops the line instead and names the picture's source path to the model itself.
+  Blocks a client wrote (Android's composer uploads photos first) get it too. Apps take only lines starting with `/` or `~` as photos.
+- Interrupt: `pane send-keys <pane> esc`.
+- Any TUI dialog: phone Terminal / screen interaction → `pane send-keys` (`up`/`down`/`enter`/`esc`/`tab`/`shift+tab`/`ctrl+c`/numbers), pane send-text.
+
+## Live screen
+
+For subscribed working / blocked sessions, node runs `pane read --source visible --lines 60` every 400 ms, pushing only changes. App parses:
+- Spinner (`✻ Cogitating… (12s · ↓ 3.2k tokens · esc to interrupt)`) → live status bar.
+- Lines above composer → output-in-progress preview.
+- Numbered options (`❯ 1. Yes` / `2. No`) → dialog buttons.
+
+## Headless assistant (Chat tab)
+
+Assistant does not enter herdr: node directly launches `zsh -ic 'CLAUDE_CONFIG_DIR=<selected profile> <launcher> "$@"' -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages --session-id|--resume <id> --plugin-dir ~/.persona/assistant-hooks --mcp-config …` (`node/assistant_start.go`; hooks are plugins as above, plus a Lark Bash gate; older Claude gets `--settings ~/.persona/assistant-settings.json`):
+
+- CLI and Agent SDK starts use the conversation's recorded config directory, including settings/model/compaction reads. Unrecorded old sessions use their actual transcript profile, then the old environment-based fallback. Only new sessions get the private profile default; the service-level environment remains a legacy default. Explicit selection, authentication implications and downgrade preparation: [assistant.md](../assistant/assistant.md), "Claude assistant profile compatibility (#3345)".
+- Non-guest assistant starts default to `--permission-mode bypassPermissions` when neither the manager nor the conversation selects a mode. Explicit selections remain authoritative on resumed and scheduled turns. The command gate honors bypass without a second tool approval; irreversible actions still require `ask_user`. See `docs/assistant/assistant.md` ("Assistant permission defaults").
+- One process supports consecutive turns through stdin, one `{"type":"user","message":{…}}` per line, images as base64 image blocks.
+- `stream_event` `content_block_delta/text_delta` supplies word-by-word output → WS delta; result ends the turn. Structured messages still read from transcript.
+- **Bounded transient recovery** (#3204, `node/assistant_recovery.go`): a turn ending on an upstream safeguards refusal, 429 / throttling, or a 5xx stays working while node resumes the unchanged request once on the same model (`prompts/assistant/model_retry`, a `<persona-context>` block, not another user bubble). If that attempt also fails, node resumes on the next concrete entry in the launcher's own ordered `/model` list; each model gets one same-model retry. The `default` placeholder, models already tried, and a locked launcher's entries are not fallbacks. The named Agent presets in ModelProfile.Tiers are not this queue.
+  The same rule applies to headless Codex's `turn/completed`. A hub/request 400 or any other 4xx but 429, authentication or model-route error, subscription usage limit (including Claude's textual quota errors), over-context refusal, or user interruption is never replayed. The structured kind wins over the words: Claude's failed turn is classified from its transcript (a rejected quota, or Claude Code's notice that it goes on by itself after the reset, is a usage limit; authentication and model routes are the user's), Codex's from `codexErrorInfo`, and only a safeguards refusal is replayed whatever its kind (#3495). Model changes use the ordinary stop-and-resume path, require an explicitly observed empty background-task inventory, and never kill running or not-yet-known background work to make a switch. Claude Code reports that inventory only when it changes, never at start, so before a switch node sends `initialize` (twice: the node sends none of its own, and only a repeated one is answered with the current set, empty included; 2.1.311). The old process stops only after the new start is checked, so a refused switch keeps it; if no eligible model can continue, the original error becomes final. Only then can the manager's scheduled-run watcher record `failed`. The transcript and session retain the model that actually answered, including a fallback.
+  The session stays working throughout process replacement, including after the replacement is registered and before its message is delivered. A resident-node handover waits for the active recovery send, then carries the remaining budget and any queued failure to the new owner, a turn's first failure in the gap included; late results follow that owner. The new owner resumes a carried failure only once its session state has loaded; without the state, or when it cannot go on, the failure is final. A user's message cancels a recovery, but gives back the turn's busy only while the recovery still holds it: a delivered recovery turn is answering, and the message waits for it as for any other turn. A refusal sticks to a conversation (the refused turn stays in its transcript), and the main conversation and a scheduled task's ask for the configured model with every message, so a fallback that answered would last one turn (#3788). After a model switch answered, messages asking for the model it moved away from stay on that fallback for 30 minutes, or until the conversation compacts; any other model picked ends the hold, and a resident-node handover carries it. A conversation refused again within two hours of its last fallback skips the same-model retry. A Claude safeguards refusal always skips it: Claude Code has already continued once on the same model ("safeguards stopped the response above · continuing once with that noted"), so a resend would be the third try (#4283). A model the chain switched to that the gateway does not have ("There's an issue with the selected model", `model_not_found`) was the recovery's own pick: it is spent and the chain goes on to the next model; the same failure on the model the user asked for stays theirs to fix. A usage limit is told by the transcript first: a failed turn written there is a usage limit only by its record (a rejected quota, or Claude Code's notice that it goes on by itself), so a gateway's "upstream account quota usage limit has been reached" 429 is recovered; the words decide only when nothing was written. A current process exiting without a result closes its recovery instead of leaving a permanent working placeholder.
+- Hooks trigger normally, but **AskUserQuestion is unavailable in -p mode** (No such tool available … nobody in this session can answer it; PreToolUse cannot run). Assistant uses MCP `ask_user` (`docs/assistant/assistant.md`).
+- Per-process inline MCP JSON (`--mcp-config '{…}'`), carrying `PERSONA_ASSISTANT=1` and PERSONA_SESSION_ID. Process env `ENABLE_TOOL_SEARCH=false` (few, frequently used tools, no ToolSearch); `--append-system-prompt` is hub's live snapshot.
+- New assistant and guest sessions register only the `persona` MCP namespace when the hub advertises `persona_contracts_v1`; old or unknown hubs and resumed sessions keep both compatibility namespaces. The allow list uses the same selection. Agent SDK assistants follow this policy too; historical tool-name readers continue accepting both names ([rolling-upgrade-compatibility.md](../protocol/rolling-upgrade-compatibility.md), "MCP namespace / tools").
+- Spare: Claude waits on stdin for first message, so can launch ahead; new chats use its session ID.
+- Launcher change kills process and resumes with new launcher. Idle 20-minute processes are reclaimed; next message resumes automatically.
+- Interrupt: no stdin interrupt in -p; terminate process, resume next message.
+- First user content in headless transcript is a block array; without ai-title, first sentence becomes title.
+
+## Background tasks (trackBackground in `transcript/background.go`, tested 2026-10-25)
+
+- Start: Bash `run_in_background:true` result is `Command running in background with ID: <id>. Output is being written to: <path>.`; async Agent result `Async agent launched … agentId: <id>`; timed-out foreground commands become `…moved to the background (ID: <id>)`.
+- End: `<task-notification><task-id>…</task-id><status>completed|failed|killed</status><summary>…</summary></task-notification>`, in queue-operation enqueue (**not user input, never in queue list**), `queued_command` attachment (commandMode=task-notification, absorbed mid-turn), or idle user message. `TaskStop` / `KillShell` also end tasks.
+- Notification forms (about 100,000 records in 2.1.3xx corpus): `Background command "<description or entire command>" completed (exit code N)` / failed with exit code N / was stopped. Monitor sends one `Monitor event: "<description>"` per event (content in `<event>`, task-id only), then `Monitor "<description>" stream ended` (tool-use-id, output-file, final lines in `<event>`). Sub-Agent: `Agent "<description>" finished` / `failed: …`, result in `<result>`. Monitor start tool_result: `Monitor started (task <id>, timeout …ms)`, letting app map task-id-only events to the call.
+- **Claude Code itself entity-encodes `>` `<` `&` in summary / event / result** (`cat &gt; f &lt;&lt;'EOF'`); not double encoding by us. Parse with html.UnescapeString. Other corpus notices, such as `local-command-stdout`, have no entities. Background commands without description put the entire command (dozens of heredoc lines) in summary. Node parses `Item.task` (`transcript/tasknote.go`), retaining a one-line label (“Background Command Completed · <first command line>”) and full command in `task.detail` for tap-to-view. Idle user-message notifications, preceded by `system/turn_duration` ending the prior turn, carry `wake: true`. App does not split turns here: choose the longest closing passage across sections before / after wake as the answer, fold others into work row / Background Task Completed drawer (`docs/apple/ios.md`, 2026-10-26).
+- Fast session metadata reads only last 384 KB of transcript; a few MB-sized base64 screenshot rows in a long turn push start rows out. Node incrementally scans each transcript (`bgScan`: full file first, appended bytes thereafter, parsing only relevant-keyword rows under 64 KB) into Session.background. Tasks older than 24 hours are treated as gone (Claude restart loses background tasks).
+
+## /loop (tested 2026-10-25)
+
+- Dynamic loop: after each turn, Claude calls `ScheduleWakeup {delaySeconds, prompt:"/loop …", reason}`, result `Next wakeup scheduled for 11:57:00 (in 1859s)`. At due time harness injects prompt as a `/loop …` user message. `{stop:true}` ends it.
+- Fixed interval: `CronCreate {cron, prompt, recurring}` / CronDelete. `recurring:false` or fixed day / month expressions (`33 17 21 10 *`) are one-time reminders, not loops.
+- Node parses alongside incremental background scanning. `Session.loop` supplies prompt, interval, next wakeup. If 15 minutes past due with no new ScheduleWakeup, treat loop as ended with Claude exit.
+- Stop: cannot externally cancel scheduled wakeup; phone Stop Loop sends Agent a message to call `ScheduleWakeup(stop)` / `CronDelete` (`AppModel.stopLoop`).
+- api-request bodies also contain tool names in definitions; count only assistant tool_use.
+
+## Renaming (tested 2026-10-25)
+
+- `/rename <name>` writes `{"type":"custom-title","customTitle":"<name>","sessionId":…}` to transcript. Name shows on divider above composer and in `claude --resume` list. custom-title takes priority over ai-title; later ai-title cannot overwrite.
+- Herdr: `herdr workspace rename <workspace_id> <label>`, `herdr tab rename <tab_id> <label>`.
+- Phone uses hub `…/rename` API. Space names key pins / hidden items; hub migrates those on rename.
+
+## Sub-Agents (2026-10-25, tested 2.1.310)
+
+- Files: `~/.claude/projects/<cwd>/<session>/subagents/agent-<id>.jsonl` (each row `isSidechain:true`, `agentId`, same format as main transcript) + `agent-<id>.meta.json`: `{agentType, description, toolUseId, requestShape:"background"|…, finished}`.
+- Nesting (2.1 metadata reviewed 2026-11-04): children launched by sub-Agents live in the same subagents directory. Metadata adds `parentAgentId` (launching sub-Agent ID, absent for main-session children), `spawnDepth` (1 = main session), `isFork` (true for `agentType: "fork"`), `launchedWithDefaults`, `requestNonInteractive`, model.
+- Node session ID `<session>@<agent id>` opens child file (`transcript.NewSubagentFile`, preserving sidechain rows), reusing items / watch / pagination. `Session.subagents` lists children: unfinished and written within 20 minutes means running; finished over a day ago omitted, independently per child (omitted parent does not omit children). Background list no longer contains Agents, only shells. Metadata uses only `agentType`, description, `toolUseId`, `requestShape`, finished, `parentAgentId` → `parent_id`, `isFork` → fork. Clients build hierarchy by `parent_id`, not spawnDepth.
+
+## Cross-session messages (tested 2026-10-25)
+
+- Another Claude session sends “Another Claude session sent a message:” + `<cross-session-message from="uds:…" from-name="<name>" from-mode="…">body</cross-session-message>` + English explanation.
+  - To an idle session: before 2.1.299, a plain user message. Since then, a queue-operation enqueue / dequeue pair, then a **hidden** user line (`isMeta: true`, `promptSource: "system"`, `turnOrigin: "peer"`, `origin: {kind: "peer", from, name, body, msg_id, …}`) that starts a turn.
+  - To a working session: a queue-operation with the same text, then, absorbed, a `queued_command` attachment with the same `origin`.
+  - A subagent handing back its report has a peer origin too (`handback: true`), on a hidden line its task notification points at: it stays hidden.
+- Parse as a user item with from: the sender's name (`origin.name`, else `from-name`, else 「另一个会话」 `transcript.FromSession`, which the hub localizes) and the body (`origin.body`, else the tagged text). The hidden line's item opens the turn, so the session shows as working while it answers (#6021); it is no prompt of the user's (`LastPromptAt`, the session title).
+- Queue text `【来自 名字】正文` (“[From name] body”); phone shows a left-side gray “From name” card, Markdown body like replies, not the user's own message.
+
+
+## Special XML in transcripts (local and hub scan, 2026-10-26)
+
+| Tag | Handling |
+| --- | --- |
+| `<command-name>` / `<command-message>` / `<command-args>` | Show as /command arguments |
+| `<local-command-stdout>` / `-stderr` | Notice row |
+| `<local-command-caveat>` | Model-facing explanation; remove |
+| `<task-notification>` | Background-task completion notice (`docs/apple/ios.md`, wakeup) |
+| `<cross-session-message from-name=…>` | Message from another session |
+| `<teammate-message teammate_id=…>` | Agent-team teammate report, displayed From teammate_id. Hub converts Agent-team JSON notifications to Markdown (`transcript/teammate.go`): `idle_notification` is bold summary, result report body, or error-stop reason; `task_assignment` is Assigned Task #ID: Title + description; shutdown request / approval / denial and plan submission / approval / return each one line. Unknown types / non-JSON remain unchanged |
+| `<bash-input>` → `<bash-stdout>` / `<bash-stderr>` | Command run directly with ! in Claude Code: user row ! command, output as Bash tool beneath |
+| `<system-reminder>` | Remove |
+| `<attached_images>` | Phone image paths, app thumbnails |
+| `<persona-context>` | App reference context, displayed as reference card |
+
+Do not push Completed when a background-task wakeup turn ends: node records whether latest turn began with a wake (`Meta.LastTurnWake` → `Session.woke_by_task`); hub `notifyFinished` skips it. Session still becomes Unread, just no iOS notification (requested 2026-10-26).
+
+## Suggested next message (composer hint)
+
+After a turn, Claude Code may draw a dim (SGR 2) next-message suggestion in an empty composer: Tab accepts, Enter sends. **Not in transcript**, only screen: text immediately after ❯ and ESC[2m in `pane read --format ansi` (first character inverse while cursor there). User drafts are not dim; new-session Try "…" is dim but not a suggestion.
+
+- Parser: `ClaudeInput(...).Suggestion` in `server/internal/screen`, multiline joined with spaces; fixture claude-2.1.312-suggestion-171.*.
+- Node (`node/suggestion.go`): on Claude working / blocked → idle / done, read visible screen at 0 / 2 / 5 / 10 seconds (2.1.312 suggestions usually appear within seconds). Stop once found, store `proto.Session.Suggestion`; stop if draft exists. Clear on working again or Persona send / key input. No extra high-frequency screen reads.
+- Short replies such as “ok” may lack suggestions; replies outlining next steps usually have one (tested “add all three to the README”).
+
+## Refusal fallback notices and unavailable models (#2203)
+
+Claude Code can write `system/model_refusal_fallback` after an upstream refusal, switching from `originalModel` to
+`fallbackModel`. With `scope: "session"`, later turns can keep using that fallback even though the launcher and purpose
+still name the configured model. A subsequent `model_not_found` / model-route 404 can therefore be a session fallback
+failure rather than a configuration error.
+
+- The transcript parser emits every `system/model_refusal_*` record as an ordinary notice, including unknown subtypes.
+  `Item.model_refusal` keeps the subtype, original and fallback models, original category, scope, explanation and raw JSON
+  record. The hub adds an English, Simplified Chinese or Japanese explanation to the notice without translating or
+  replacing the source values. Existing clients display its text; it may appear inside folded work.
+- `Session.model_fallback` carries the active observed fallback. Session scope survives later turns; other scopes end
+  at the next turn. A real reply from another model or a confirmed `/model` change clears the evidence. Synthetic
+  error replies do not count as model changes. The incremental background scan retains this state even when the
+  fallback record has moved outside the quick metadata tail.
+- A model-route failure while that fallback is active gets `turn_error_code: "model_fallback_unavailable"` and
+  `turn_error_kind: "user"`. The original error stays intact. Readiness and work triage explain the refusal → fallback →
+  unavailable-model chain, recommending a new conversation or `/model` in a Claude Code terminal. Readiness does not
+  point at model settings or block creating a new conversation because of this session-only problem. Automatic work
+  continuation and scheduled-run retries do not resend this failed turn.
+- No configuration is required. Claude Code's own session-scoped fallback and the headless assistant's bounded recovery in [Headless assistant](#headless-assistant-chat-tab) are separate mechanisms. The latter handles a final safeguards / 429 / 5xx turn error without rewriting the request; it never replays this section's `model_fallback_unavailable` 404 and does not change Claude Code's own fallback policy.
+
+Client follow-up remains necessary for dedicated cards, an always-visible notice, an actual-model/Fell Back marker,
+explicit recovery buttons, and suppressing the old error cards' Retry/Continue or model-settings buttons. Clients may
+ignore the new structured fields today. Apple also needs a `ChatCache` version bump when adopting the changed item
+structure; this server change does not modify Swift. The broader no-fallback refusal policy below remains a proposal.
+
+## Safety blocks and automatic fallback (broader proposal; narrow headless recovery implemented in #3204)
+
+The user asked whether safety blocks and model downgrades are visible in the app. The limited server behavior above is implemented; the broader design in this section remains a proposal, **not implemented**. Items marked Decision Pending require the user's choice; implement the PR split below afterward. The bounded same-request recovery in #3204 is the one exception to this proposal's no-automatic-Continue baseline, not an implementation of its broader policy.
+
+**Principle**: report what happened honestly and never bypass or reduce safeguards: no rewriting user messages or automatic rephrasing retries, and no decisions by the task manager's judging model. The implemented recovery only resumes the unchanged request under the explicit bounds above. Every other blocked turn remains the user's decision, using rules only, never model triage.
+
+### Baseline before #3204
+
+Claude Code (2.1.318 tested, see issue) has two outcomes when safeguards block a message:
+
+| Outcome | Transcript | Current Persona |
+| --- | --- | --- |
+| Automatic fallback (default) | `system/model_refusal_fallback` row: original model, new model, category, scope; `scope: "session"` makes all later session turns use new model | `transcript.go` system branch recognizes only some subtypes; `default: return nil` drops it. Later assistant rows carry new model, `Meta.Model` → `Session.model` silently changes, and composer model button (`SessionModes.modelName`, web `launcher-models.ts` `modelName`, #2200 / #2201) displays it without explanation |
+| Block without fallback | `system/model_refusal_no_fallback` row plus synthetic reply with `stop_reason: "refusal"`, model `<synthetic>`, “`API Error:` …safeguards flagged this message…” | System row dropped; synthetic reply treated as ordinary assistant text, `entry.Message` ignores stop_reason. `API Error:` prefix causes #1516 model-service-error handling below |
+
+Blocked-without-fallback wording currently follows the model-service-error path everywhere:
+
+- Chat: iOS `Views/Chat/APIErrorCard.swift`, web `web/src/lib/api-errors.ts`, Android `core/domain/.../lines/ApiErrors.kt` recognize `API Error:` prefix. Unknown status code becomes Model Request Failed; transient not false offers Retry, sending `继续` (“Continue”, `ChatView.swift`). Unchanged context likely gets blocked again.
+- Manager: `assistant/fleet.go` `turnError` uses `assistantwire.CutOff` / `APIErrorMarkers` to classify last sentence as TurnError. Push (`hub/machine.go`) is “⚠️ Title” + “Interrupted by a Model Service Error: <original text>”.
+- Tasks: receipt `state: "interrupted"`, summary Interrupted by a Model Service Error (`assistant/tasks_follow.go`, `assistantwire.InterruptedSummary`); Continue card sends `继续` (“Continue”, `continueTask` in `tasks_start.go`); main-chat `prompts/assistant/task_notice.md` says interrupted by model service error.
+- Task-manager triage (`assistant/agents_work_turns.go` `triageRules`): `transientError` → `WaitTransient`; Auto Continue **automatically sends `继续` (“Continue”)**, at most maxRetries. Otherwise Model Service Error, Needs Your Attention card. Whether refusal text contains `transientError` keywords (upstream, network, `api_error`…) is unverified. **If so, blocked messages are currently automatically retried**; the first PR must prevent this (Verification Pending below).
+- Scheduled tasks / follow-ups (`assistant/schedule.go` `watchScheduledRun`): `lastTurnAPIError` matches final sentence by `APIErrorMarkers` prefixes. Synthetic reply beginning API Error **always** matches, regardless of keywords. Run recorded failed, push Scheduled Task Failed: <original>, **same prompt rerun after 3 minutes** (`docs/assistant/assistant.md`, “Failure and retry”). This automatic resend definitely exists and must also be prevented in first PR.
+- To-do task cards: web `web/src/lib/todos.ts` `interruptedAgent` / `interruption()` (`views/assistant/Tasks.tsx`), Android `Tasks.kt` `Interruption.of` and `Models.kt` `Session.interrupted` derive Interrupted from session.turn_error. Unrecognized `parseAPIError` gives Model Request Failed; `canContinue` true offers Continue. Clients currently ignore turn_error_kind.
+
+Local Claude Code 2.1.310 binary lacks `model_refusal_*` / `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK` strings; local and `CLAUDE_CONFIG_DIR` transcripts lack both system rows. Field tables below come from the issue description; **verify names against sanitized real excerpts** before implementing parsing.
+
+### Parsing (node: `server/internal/transcript`)
+
+- Add `model_refusal_*` fields to entry (original / new model, category, scope, using verified real keys); add `stop_reason` to Message.
+- `system/model_refusal_fallback` → `KindNotice` with new refusal structure: `{"outcome": "fallback", "from": "<original model>", "to": "<new model>", "category": "<original category>", "scope": "session" | <other original value>, "raw": "<original row content, possibly empty>"}`. Text remains a Chinese sentence (Client wording below), allowing old apps ignoring refusal to show ordinary notice.
+- `system/model_refusal_no_fallback` → same notice, `outcome: "blocked"`. Following synthetic `stop_reason: "refusal"` reply produces text item with `refusal: {"outcome": "blocked", …}`, merged with preceding notice into one card, not API error card. **Exclude from `Meta.LastText` as an answer**; record `Meta.TurnError` = original text, `Meta.TurnErrorKind = "refusal"` (new `proto.Session.TurnErrorKind` value alongside transient / user). Detect by `stop_reason` and system row, not English safeguards wording, which can change.
+- Synthetic text **removes initial `API Error:` prefix**, preserving full original in refusal.raw. iOS `APIErrorCard`, web `api-errors.ts`, Android `ApiErrors.kt` use that prefix; removing it in node means **old clients also display plain text without Retry**, no update required. Hub `CutOff` / `lastTurnAPIError` also stop treating it as API error. Old clients cannot identify a refusal card, only an English explanation, better than a Retry that gets blocked again.
+- Clearing `TurnError`: Claude's `Meta.TurnError` comes from its own error reply (`isApiErrorMessage`, "Session IDs and transcripts" above) and is already cleared on the next turn start or nonsynthetic assistant reply; a refusal reply most likely sets it today with no kind, read off its text. New `TurnErrorKind = "refusal"` must keep that clearing: **clear `TurnError` / `TurnErrorKind` on next real user message or nonsynthetic assistant reply**. Otherwise refusal row still in fast-meta tail makes successful rephrased turns push Blocked, retain triage cards, and leave tasks Interrupted.
+- Unknown model_refusal-prefixed subtypes or missing model / category: always show notice with original content, or “Claude's Safety Checks Handled This Message (Persona Cannot Identify the Details)” if absent; leave `refusal.outcome` empty. Unknown categories display raw value; cyber → Cybersecurity, others initially raw.
+- Session: add `proto.Session` `model_fallback` `{from, to, category, scope, at}` only when latest fallback has `scope: "session"` and latest assistant still uses to. User `/model` switch removes it. Track in incremental scanning with `bgScan`, without extra file reads.
+- Item-structure change requires iOS `ChatCache` directory version bump (currently `chats-v8`; use the latest version on `main` at implementation), per docs/lessons/transcript.md. Update hub golden and `../protocol/protocol.md` Item / Session field tables together.
+
+### Client wording
+
+Use the same copy on iOS / web / Android. Do not put wording in hub Go: notice text is old-client fallback; new clients render refusal fields themselves.
+
+| Location | Automatic fallback | Blocked without fallback |
+| --- | --- | --- |
+| Chat | Single caution notice, not error red: “Claude's safety checks blocked this message; answering with <new model> (category: <category>)”. Scope session adds “This session will use <new model> from now on” | Caution card, not danger or Error: “Blocked by Claude's safety checks; no answer”, subtitle Category: <category>, collapsed original text and time. **No Retry**. Explanation: “Sending the same content again will probably be blocked; edit it before sending” |
+| Composer model button | Actual new model using #2200 / #2201 friendly names, small Fell Back badge (new named design-system token / component, no hardcoding); menu adds Switch Back to <original model> | Unchanged |
+| Switch back | Herdr Claude sends `/model <original model alias>` (existing `SessionModes.swift` path, `PromptItems.claudeModelID`). No option for read-only `claude_bg` or headless assistant (assistant model from hub config, next turn launches per config, #1562; verify whether fallback survives `--resume`) | — |
+| Push | No separate push; answer and completion push remain normal | “⛔ <title>” + “Blocked by Claude's safety checks; no answer (<category>)”; no original message content |
+| Task receipt | Normal receipt / completion rules; append “N turns were blocked by safety checks and answered with <new model>” | `state: "interrupted"` + new `cause: "refusal"`, summary Blocked by Claude's Safety Checks. New clients offer Open Chat, not Continue. No new state: old web `receiptState` maps unknown states to done |
+| Main-chat task notice (`task_notice.md`) | Unchanged | Blocked by Claude's Safety Checks (Waiting for User Decision); prompt explicitly forbids rephrasing / resending for user |
+| To-do task card | Unchanged | Web `todos.ts` interruption / `todoStatus`, Android `Tasks.kt` Interruption / `Session.interrupted` check `turn_error_kind == "refusal"` first: Blocked by Claude's Safety Checks, **no Continue**, Open Chat |
+| Scheduled tasks / follow-ups | Unchanged | `watchScheduledRun` detects refusal-ended turn by `Item.refusal` / `TurnErrorKind == "refusal"`, not text prefix; record blocked, **no retry**. Push Scheduled Task Blocked: <title> + Blocked by Claude's Safety Checks; No Answer (<category>), no original text |
+| Task-manager triage | Unaffected | `triageRules` checks `TurnErrorKind == "refusal"` **before** `transientError`: `WaitUser` card Blocked by Claude's Safety Checks: <category>, I'll Handle It (opens chat) / Leave It for Now. No `WaitTransient`, automatic Continue, or judging-model call |
+
+Old clients show notice's Chinese text. Synthetic text without `API Error:` prefix (Parsing above) becomes ordinary text without Retry.
+Old web / Android task cards ignore `turn_error_kind` and still show Interrupted + Continue; this needs client updates.
+Hub `continueTask` does not reject cause refusal: the user's explicit Continue is their decision, but new clients offer no such button.
+
+### Default policy (decision pending)
+
+`CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK` is read only from process environment, not `--settings` env (tested in issue). Three options:
+
+- **A. Keep Claude Code's default automatic fallback, only make it visible.** No launch changes; answers continue, but users may not know a weaker model is now used for the session—the Fell Back badge addresses this.
+- **B. Disable automatic fallback for all Persona-started Claude.** Block stops work; user chooses rephrase, model change, or abandonment. With increasing refusals, stops and stalled tasks become noticeably more frequent.
+- **C. Setting (recommended, decision pending)**: Settings › Claude Code, When Safety Checks Block a Message: Answer with Another Model (default, A) / Stop and Wait for Me (B). Store in hub settings, distribute with node.configure. One shared option for main chat and herdr Agents; split later if needed.
+
+Variable injection when disabled:
+
+- Herdr pane: prepend `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK=1 ` to pane run command and herdr `resume_argv` (`claudeCommandLine` in `node/herdrresume.go`). Most launchers are shell functions; env cannot run functions. Assignment + function forwards the variable to launched Claude in zsh / bash; fish differs, as in report-only hooks above. Verify each.
+- Managed launchers: `managedEnv` in `node/managed.go`, like `CLAUDE_CODE_DISABLE_ARTIFACT`; personad launch carries it.
+- Headless assistant: `cmd.Env` in node/assistant_start.go.
+- User-started computer sessions are untouched, display only. Setting changes affect only subsequently started / resumed processes; explain in UI.
+
+### Multi-Agent collaboration
+
+- An Agent blocked without fallback stops; task says Blocked by Safety Checks, **not completed or model-service error**. Other Agents on the task keep running, `WaitAgent` dependents keep waiting. Task manager sends no Continue, does not reassign work or rephrase it for another Agent. Main chat receives notice; user decides.
+- Automatic fallback does not interrupt flow; record in chat and receipt. `scope: "session"` adds Fell Back to model name in Agents list.
+- Main chat itself blocked: same card; scheduled-task / follow-up turn (`docs/assistant/assistant.md`) recorded blocked, not retried; next scheduled time runs normally.
+
+### Compatibility and verification pending
+
+- New system rows, partly internal fields, may be renamed. Use fields only when available; otherwise display original text, without error or dropped row.
+- **Verification pending**, before implementation with sanitized real excerpts in `server/internal/transcript/testdata`, text replaced by placeholders:
+  1. Actual keys for both system rows, scope / category values; full synthetic-reply shape (always `stop_reason: "refusal"`? always `<synthetic>` model?).
+  2. Does refusal text match `transientError` and cause current automatic Continue?
+  3. Does `--resume` retain fallback model? Does `/model` restoration cause immediate refusal / fallback next turn?
+  4. Behavior with custom `ANTHROPIC_BASE_URL` gateways, API keys, Bedrock / Vertex launchers; whether target model exists at gateway (otherwise ordinary API error).
+  5. Earliest `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK` version; assignment + function forwarding in zsh / bash / fish.
+  6. Corresponding headless stream-json events (structured content currently read from transcript; events could display earlier).
+- Codex, an internal Codex variant, DSH, pi unaffected; their future refusals can use the same refusal structure.
+
+### Implementation PR split (after decision)
+
+1. Server: transcript parser / fixtures, proto `Item.refusal`, `Session.model_fallback`, `TurnErrorKind: "refusal"`; hub push, task-receipt cause, `triageRules` (prevent automatic Continue first), `watchScheduledRun` no-retry + wording, `TurnError` clearing, `task_notice.md` + golden; update `../protocol/protocol.md` and this section to current behavior.
+2. iOS / Mac: fallback notices, refusal cards, Fell Back / Switch Back model controls, `ChatCache` version bump; dark / light screenshots.
+3. Web: same (separate refusal card outside `api-errors.ts`, `feed.ts` receipts, `todos.ts` task cards read `turn_error_kind`).
+4. Android: same, including `Tasks.kt` / `Models.kt` task cards; three styles × dark / light screenshots.
+5. Default policy per decision: setting, `node.configure`, three variable-injection locations.
+
+### Acceptance
+
+- Parsing tests for sanitized excerpts of both outcomes; unknown subtype shows original text; normal answer following refusal clears `TurnError`, tested.
+- Blocked scheduled tasks / follow-ups are recorded blocked, never retried, tested; task cards say Blocked by Safety Checks without Continue.
+- No-fallback block: refusal card, no Retry; push, receipt, main-chat notice, triage all say Blocked by Safety Checks, not Model Service Error; manager sends no automatic messages, tested.
+- Automatic fallback: chat notice; `scope: "session"` gives model button Fell Back, Switch Back sends /model.
+- iOS, web, Android dark / light screenshots inspected; item-structure change includes `ChatCache` directory version bump.

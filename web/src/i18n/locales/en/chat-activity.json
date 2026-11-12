@@ -1,0 +1,10 @@
+{
+  "section_running": "Running",
+  "section_completed": "Completed",
+  "empty": "No background tasks in this session yet",
+  "back": "Back",
+  "loop": "Loop",
+  "stop_loop": "Stop loop",
+  "stop_loop_explain": "This sends the agent a message so it won't schedule another wake-up. The current run finishes first.",
+  "copy_command": "Copy command"
+}

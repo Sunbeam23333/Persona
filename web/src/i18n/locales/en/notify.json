@@ -1,0 +1,17 @@
+{
+  "needs_title": "{name} needs you",
+  "finished_title": "{name} finished",
+  "needs_body": "The agent stopped and is waiting for you",
+  "finished_body": "The agent finished",
+  "question_title": "{name} has a question",
+  "plan_title": "{name}: plan awaiting approval",
+  "permission_title": "{name} needs your permission",
+  "screen_title": "{name} is waiting for you in the terminal",
+  "elicitation_title": "{name} has an MCP request for you",
+  "allow_failed": "Couldn't allow",
+  "deny_failed": "Couldn't deny",
+  "finished_batch_title": "{count} tasks finished · {names}",
+  "finished_batch_more": "{names} and others",
+  "finished_batch_body": "Open the overview",
+  "finished_batch_separator": ", "
+}

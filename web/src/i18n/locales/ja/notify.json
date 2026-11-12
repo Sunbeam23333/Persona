@@ -1,0 +1,17 @@
+{
+  "needs_title": "{name} が対応を待っています",
+  "finished_title": "{name} が完了しました",
+  "needs_body": "エージェントが止まってあなたを待っています",
+  "finished_body": "エージェントが完了しました",
+  "question_title": "{name}から質問があります",
+  "plan_title": "{name}：プランの承認待ち",
+  "permission_title": "{name}に許可が必要です",
+  "screen_title": "{name} がターミナルで待っています",
+  "elicitation_title": "{name} に MCP リクエストがあります",
+  "allow_failed": "許可できませんでした",
+  "deny_failed": "拒否できませんでした",
+  "finished_batch_title": "{count} 件のタスクが完了しました · {names}",
+  "finished_batch_more": "{names} など",
+  "finished_batch_body": "概要を開く",
+  "finished_batch_separator": "、"
+}

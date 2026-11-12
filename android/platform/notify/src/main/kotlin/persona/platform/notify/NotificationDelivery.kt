@@ -1,0 +1,111 @@
+package persona.platform.notify
+
+import persona.core.contracts.GroupKeys
+import persona.core.contracts.Interaction
+import persona.core.contracts.InteractionResolvedEvent
+import persona.core.contracts.NotifyEvent
+import persona.core.contracts.ServerEvent
+import persona.core.contracts.SessionKey
+import persona.core.contracts.api.DeviceNotificationPreferences
+import persona.core.contracts.api.DoneNotification
+import persona.core.contracts.api.InteractionCenter
+import persona.core.contracts.api.SessionsRepository
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.filter
+import java.time.Instant
+
+/**
+ * The events [NotificationDelivery.accept] acts on, taken off the hub's event flow at once and handed on in order (#4038).
+ * The merged event flow has no buffer: `emit` returns only after every subscriber took the event, so a subscriber busy
+ * with one (accept reads the preferences and the cards over the network) held up every other live event, chat
+ * streaming included, until it was done.
+ */
+internal fun Flow<ServerEvent>.notificationEvents(): Flow<ServerEvent> =
+    filter { it is NotifyEvent || it is InteractionResolvedEvent }.buffer(Channel.UNLIMITED)
+
+/** Live alerts require hub-approved notify events; [catchUp] is the bounded fallback when no live service can run. */
+internal class NotificationDelivery(
+    private val interactions: InteractionCenter,
+    private val sessions: SessionsRepository,
+    private val suppressed: (SessionKey) -> Boolean,
+    /** Catch-up supplies its own hub group's preferences; live passes null so Notifier rechecks the current setting. */
+    private val postInteraction: (Interaction, Boolean, DeviceNotificationPreferences?) -> Unit,
+    private val postNotify: (NotifyEvent) -> Unit,
+    private val retract: (String) -> Unit,
+    private val preferences: suspend () -> DeviceNotificationPreferences? = { DeviceNotificationPreferences() },
+    private val notified: () -> Set<String> = { emptySet() },
+    private val desktopOnline: (String) -> Boolean? = { null },
+    private val now: () -> Instant = Instant::now,
+    private val catchUpPreferences: suspend () -> Map<String?, DeviceNotificationPreferences> = {
+        preferences()?.let { mapOf<String?, DeviceNotificationPreferences>(null to it) }.orEmpty()
+    },
+) {
+    suspend fun accept(event: ServerEvent) {
+        when (event) {
+            is InteractionResolvedEvent -> retract(event.id)
+            is NotifyEvent -> {
+                val session = NotificationPolicy.session(event)
+                if (session != null && (suppressed(session) || quiet(session))) return
+                if (event.kind != "interaction" && NotificationPolicy.channel(event) == null) return
+                val settings = preferences() ?: return
+                if ((event.kind == "interaction" || event.kind == "alert" || event.kind == "reply") && !settings.input) return
+                if (event.kind == "done" && settings.done == DoneNotification.Off) return
+                // Long/Always and session mute/seen suppression remain the hub's decision.
+                if (session != null && event.kind != "assistant" && sessions.sessions.value.none { it.key == session }) sessions.refresh()
+                if (event.kind == "interaction") {
+                    val id = event.interactionId ?: return
+                    interactions.refresh()
+                    // A card outside any session (`personad ask` in a plain terminal, #4515) has an empty session id: it
+                    // is found by the event's own ids, and with no conversation of its own to be looking at, never held back.
+                    val key = SessionKey(event.machineId, event.sessionId)
+                    val ix = interactions.pending.value.firstOrNull { it.id == id && it.sessionKey == key } ?: return
+                    if (NotificationPolicy.expired(ix)) { retract(id); return }
+                    if (session == null || !suppressed(session)) postInteraction(ix, event.quiet, null)
+                } else if (session == null || !suppressed(session)) postNotify(event)
+            }
+            else -> Unit
+        }
+    }
+
+    /**
+     * Fetches the current pending cards once when Android could not run the resident service. Null preferences and a
+     * failed refresh throw so WorkManager retries; no card is treated as absent merely because startup is incomplete.
+     */
+    suspend fun catchUp() {
+        val settings = catchUpPreferences()
+        check(settings.isNotEmpty()) { "Notification preferences are not ready" }
+        if (settings.values.none { it.input }) return
+        sessions.refresh()
+        interactions.refresh()
+        val currentTime = now()
+        val pending = interactions.pending.value.map { ix ->
+            ix to checkNotNull(settings[GroupKeys.namespaceOf(ix.machineId)]) {
+                "Notification preferences are not ready for the request's hub group"
+            }
+        }
+        val alreadyNotified = notified()
+        val pendingIds = pending.mapTo(HashSet()) { it.first.id }
+        // A request resolved while no service was alive leaves both its system notification and its de-dup record behind.
+        (alreadyNotified - pendingIds).forEach(retract)
+        pending.forEach { (ix, groupSettings) ->
+            if (NotificationPolicy.expired(ix, currentTime)) {
+                retract(ix.id)
+                return@forEach
+            }
+            if (
+                !groupSettings.input ||
+                ix.id in alreadyNotified ||
+                (ix.manager ?: "assistant") in groupSettings.mutedManagers.orEmpty()
+            ) return@forEach
+            if (groupSettings.muteWhileDesktop == true && desktopOnline(ix.machineId) == true) return@forEach
+            val session = ix.sessionKey.takeIf { it.machineId.isNotBlank() && it.sessionId.isNotBlank() }
+            if (session != null && (suppressed(session) || quiet(session))) return@forEach
+            postInteraction(ix, NotificationPolicy.hushForCatchUp(groupSettings.quiet, currentTime), groupSettings)
+        }
+    }
+
+    /** A quiet task's agent (#1731): the hub sends no alert for it; one from an older hub is not shown either. */
+    private fun quiet(session: SessionKey) = sessions.sessions.value.any { it.key == session && it.quiet }
+}

@@ -1,0 +1,110 @@
+name: CI
+on:
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Run every platform, including unchanged ones'
+        type: boolean
+        default: true
+      lanes:
+        description: 'When full is false: all, auto (diff against origin/main), or comma-separated server,web,android,apple,runtimes,scripts'
+        type: string
+        default: auto
+      base:
+        description: 'Optional diff base for lanes=auto; defaults to origin/main'
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.repository }}-${{ github.ref_name }}-${{ inputs.full }}-${{ inputs.lanes }}
+  cancel-in-progress: true
+jobs:
+  changes:
+    name: Manual repository guards and path selection
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      server: ${{ steps.paths.outputs.server }}
+      web: ${{ steps.paths.outputs.web }}
+      android: ${{ steps.paths.outputs.android }}
+      apple: ${{ steps.paths.outputs.apple }}
+      runtimes: ${{ steps.paths.outputs.runtimes }}
+      scripts: ${{ steps.paths.outputs.scripts }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: base
+        name: Resolve comparison base
+        env:
+          CI_BASE_INPUT: ${{ inputs.base }}
+        run: python3 scripts/ci/paths.py --print-base --base "$CI_BASE_INPUT"
+      - name: Repository guards
+        env:
+          CI_BASE_SHA: ${{ steps.base.outputs.base }}
+        run: scripts/ci/guards.sh
+      - id: paths
+        name: Select platforms
+        env:
+          CI_FULL: ${{ inputs.full }}
+          CI_LANES: ${{ inputs.lanes || 'auto' }}
+          CI_BASE_SHA: ${{ steps.base.outputs.base }}
+        run: |
+          if [ "$CI_FULL" = true ]; then
+            python3 scripts/ci/paths.py --all
+          else
+            python3 scripts/ci/paths.py --lanes "$CI_LANES" --base "$CI_BASE_SHA"
+          fi
+  server:
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    uses: ./.github/workflows/server-test.yml
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    uses: ./.github/workflows/web-test.yml
+  android:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    uses: ./.github/workflows/android-test.yml
+  apple:
+    name: iOS and Watch
+    needs: changes
+    if: needs.changes.outputs.apple == 'true'
+    uses: ./.github/workflows/apple-test.yml
+    with:
+      lane: ios
+  apple_macos:
+    name: Mac (non-blocking)
+    needs: changes
+    if: needs.changes.outputs.apple == 'true'
+    uses: ./.github/workflows/apple-test.yml
+    with:
+      lane: macos
+  runtimes:
+    needs: changes
+    if: needs.changes.outputs.runtimes == 'true'
+    uses: ./.github/workflows/runtimes-test.yml
+  scripts:
+    needs: changes
+    if: needs.changes.outputs.scripts == 'true'
+    uses: ./.github/workflows/scripts-tests.yml
+  # An unselected manual lane is never represented as a passed platform test.
+  # Mac has a visible independent result but does not block CI required.
+  required:
+    name: CI required
+    needs: [changes, server, web, android, apple, runtimes, scripts]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify selected platform results
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci/required.py

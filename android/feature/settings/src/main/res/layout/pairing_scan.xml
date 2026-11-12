@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pairing_scan_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@android:color/black">
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp">
+        <Button
+            android:id="@+id/pairing_scan_close"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            android:minHeight="48dp"
+            android:singleLine="true"
+            android:text="@string/settings_pairing_scan_close"
+            android:textColor="@android:color/white" />
+        <!-- Reserve the same width opposite Close, including when its localized label grows. -->
+        <Button
+            android:id="@+id/pairing_scan_close_space"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:importantForAccessibility="no"
+            android:singleLine="true"
+            android:text="@string/settings_pairing_scan_close"
+            android:visibility="invisible" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_toEndOf="@id/pairing_scan_close"
+            android:layout_toStartOf="@id/pairing_scan_close_space"
+            android:layout_centerVertical="true"
+            android:accessibilityHeading="true"
+            android:gravity="center"
+            android:text="@string/settings_pairing_scan_title"
+            android:textSize="20sp"
+            android:textColor="@android:color/white" />
+    </RelativeLayout>
+
+    <com.journeyapps.barcodescanner.DecoratedBarcodeView
+        android:id="@+id/zxing_barcode_scanner"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="24dp"
+        android:gravity="center"
+        android:text="@string/settings_pairing_scan_hint"
+        android:textSize="16sp"
+        android:textColor="@android:color/white" />
+
+    <Button
+        android:id="@+id/pairing_scan_manual"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="24dp"
+        android:layout_marginBottom="24dp"
+        android:minHeight="48dp"
+        android:singleLine="true"
+        android:text="@string/settings_pairing_scan_manual" />
+</LinearLayout>

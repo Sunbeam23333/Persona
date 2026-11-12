@@ -1,0 +1,4 @@
+{
+  "photos_as_paths_one": "Couldn't bring back a photo from your computer, so its path is in the input instead.",
+  "photos_as_paths_other": "Couldn't bring back {count} photos from your computer, so their paths are in the input instead."
+}

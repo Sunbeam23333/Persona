@@ -1,0 +1,427 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English is the fallback for every language the app does not have (docs/protocol/i18n.md); values-zh and values-ja hold the same keys. -->
+<resources>
+    <!-- Agent states (docs/protocol/i18n.md glossary) -->
+    <string name="designsystem_status_needs_you">Needs you</string>
+    <string name="designsystem_status_working">Working</string>
+    <string name="designsystem_status_unread">Unread</string>
+    <string name="designsystem_status_idle">Seen</string>
+    <string name="designsystem_status_offline">Not running</string>
+    <string name="designsystem_status_unknown">Unknown</string>
+    <string name="designsystem_status_waiting">Waiting</string>
+    <string name="designsystem_status_muted">Muted</string>
+    <!-- Layout density (Settings › Appearance › Layout density) -->
+    <string name="designsystem_density_standard">Standard</string>
+    <string name="designsystem_density_compact">Compact</string>
+    <!-- Interface styles (Settings › Appearance › Interface style) and glass -->
+    <string name="designsystem_style_glass">Glass</string>
+    <string name="designsystem_style_glass_summary">Frosted glass floats over the status light and glows amber when something is waiting for you</string>
+    <string name="designsystem_style_brief">Brief</string>
+    <string name="designsystem_style_brief_summary">Ink on white paper, with one highlighter only for Persona\'s suggestions and what\'s waiting for you</string>
+    <string name="designsystem_style_board">Board</string>
+    <string name="designsystem_style_board_summary">Each agent gets a job ticket, with status colors you can read at a glance</string>
+    <string name="designsystem_glass_auto">Auto</string>
+    <string name="designsystem_glass_reduced">Reduce transparency</string>
+    <!-- The persona's face: its states and the built-in avatars (persona look = avatar) -->
+    <string name="designsystem_persona_idle">Idle</string>
+    <string name="designsystem_persona_thinking">Thinking</string>
+    <string name="designsystem_persona_working">Working</string>
+    <string name="designsystem_persona_needs_you">Needs you</string>
+    <string name="designsystem_persona_offline">Offline</string>
+    <string name="designsystem_persona_button_state">Persona, %1$s</string>
+    <string name="designsystem_face_mochi">Mochi</string>
+    <string name="designsystem_face_mochi_summary">The app icon\'s colors</string>
+    <!-- The hub's avatar packages (Settings › Appearance › Persona look) -->
+    <string name="designsystem_avatars_list_failed">Couldn\'t get the avatar list: %1$s</string>
+    <string name="designsystem_avatars_missing_file">Missing %1$s</string>
+    <string name="designsystem_avatars_not_saved">Couldn\'t save it on the phone</string>
+    <string name="designsystem_avatars_download_failed">Couldn\'t download “%1$s”: %2$s</string>
+    <!-- Shared words -->
+    <string name="designsystem_expand">Expand</string>
+    <string name="designsystem_collapse">Collapse</string>
+    <string name="designsystem_expanded">Expanded</string>
+    <string name="designsystem_collapsed">Collapsed</string>
+    <string name="designsystem_retry">Retry</string>
+    <string name="designsystem_back">Back</string>
+    <string name="designsystem_cancel">Cancel</string>
+    <string name="designsystem_close">Close</string>
+    <string name="designsystem_done">Done</string>
+    <string name="designsystem_open">Open</string>
+    <string name="designsystem_image">Image</string>
+    <string name="designsystem_photo">Photo</string>
+    <string name="designsystem_loading">Loading</string>
+    <string name="designsystem_processing">Working…</string>
+    <string name="designsystem_with_state">%1$s, %2$s</string>
+    <!-- Requests that need the user (Agents page) -->
+    <string name="designsystem_decision_command">Waiting for your approval</string>
+    <string name="designsystem_decision_tool">Waiting for your approval</string>
+    <string name="designsystem_decision_plan">Plan awaiting approval</string>
+    <string name="designsystem_decision_question">Has a question</string>
+    <string name="designsystem_decision_form">Needs a few answers</string>
+    <string name="designsystem_decision_screen">Terminal needs you</string>
+    <string name="designsystem_decision_other">Needs you</string>
+    <string name="designsystem_decision_open_chat">Open chat</string>
+    <string name="designsystem_decision_open_full">Open full page</string>
+    <string name="designsystem_decision_previous">Previous</string>
+    <string name="designsystem_decision_next">Next</string>
+    <string name="designsystem_decision_advice">Persona: %1$s</string>
+    <string name="designsystem_decision_recommended">Suggested</string>
+    <string name="designsystem_decision_position">Request %1$d of %2$d</string>
+    <string name="designsystem_decision_option_position">Option %1$d of %2$d</string>
+    <!-- Where an outgoing message stands -->
+    <string name="designsystem_pending_sending">Sending</string>
+    <string name="designsystem_pending_waiting">Sends when connected</string>
+    <string name="designsystem_pending_unconfirmed">Result unconfirmed</string>
+    <string name="designsystem_pending_verifying">Checking</string>
+    <string name="designsystem_pending_needs_review">Couldn\'t confirm delivery</string>
+    <string name="designsystem_pending_refused">Not sent</string>
+    <string name="designsystem_pending_refused_reason">Not sent: %1$s</string>
+    <string name="designsystem_pending_waiting_for_network">Waiting for network</string>
+    <!-- The session's status line above the composer -->
+    <string name="designsystem_line_replaced">Replaced by a new session</string>
+    <string name="designsystem_line_ended">Session ended</string>
+    <string name="designsystem_line_machine_offline">Computer offline; status may be out of date</string>
+    <plurals name="designsystem_line_machine_offline_since">
+        <item quantity="one">Computer offline; status may be out of date (%1$d minute ago)</item>
+        <item quantity="other">Computer offline; status may be out of date (%1$d minutes ago)</item>
+    </plurals>
+    <string name="designsystem_line_answering">Sending your choice…</string>
+    <string name="designsystem_message_sending">Sending</string>
+    <string name="designsystem_message_processing">Processing</string>
+    <string name="designsystem_line_sending">Sending…</string>
+    <string name="designsystem_line_unconfirmed">Last action\'s result is unconfirmed</string>
+    <plurals name="designsystem_line_needs_you_count">
+        <item quantity="one">%1$d thing needs you</item>
+        <item quantity="other">%1$d things need you</item>
+    </plurals>
+    <string name="designsystem_line_needs_you_about">Needs you: %1$s</string>
+    <string name="designsystem_line_needs_you">Needs you</string>
+    <string name="designsystem_line_stopping">Interrupt sent, waiting for the computer</string>
+    <string name="designsystem_line_working_on">Working: %1$s</string>
+    <string name="designsystem_line_working">Working</string>
+    <string name="designsystem_line_waiting">Waiting for the next task</string>
+    <!-- After an operation failed: the button and the sentence -->
+    <string name="designsystem_feedback_verify">Check</string>
+    <string name="designsystem_feedback_pair_again">Pair again</string>
+    <string name="designsystem_feedback_open_terminal">Open terminal</string>
+    <string name="designsystem_feedback_review_input">Check input</string>
+    <string name="designsystem_feedback_update_hub">Update hub</string>
+    <string name="designsystem_feedback_grant_permission">Allow access</string>
+    <string name="designsystem_feedback_demo">Nothing is really sent in demo mode</string>
+    <string name="designsystem_feedback_pairing_expired">Pairing has expired. Scan the code again.</string>
+    <string name="designsystem_feedback_certificate_changed">The hub\'s certificate changed. Scan the code again.</string>
+    <string name="designsystem_feedback_incompatible">The hub\'s version or security settings aren\'t compatible. Update the hub, then reconnect.</string>
+    <string name="designsystem_feedback_local_permission">Allow local network access, then reconnect</string>
+    <string name="designsystem_feedback_input_draft">There\'s a draft on the computer. Deal with it in the terminal first; what you typed on the phone is kept.</string>
+    <string name="designsystem_feedback_dialog_open">There\'s a dialog open on the computer. Handle it first or open the terminal.</string>
+    <string name="designsystem_feedback_stale_session">The session changed. Refresh and check which session you meant.</string>
+    <string name="designsystem_feedback_invalid">This action isn\'t valid. Check your input.</string>
+    <string name="designsystem_feedback_id_reused">This action\'s ID was already used. Check the original action\'s result first.</string>
+    <string name="designsystem_feedback_prompt_changed">The question changed. Refresh and choose again.</string>
+    <string name="designsystem_feedback_expired">The request expired or was already handled. Check in the terminal.</string>
+    <string name="designsystem_feedback_rate_limited_retry">Too many actions. Try again in a moment.</string>
+    <string name="designsystem_feedback_rate_limited">Too many actions. Check the status in a moment.</string>
+    <string name="designsystem_feedback_not_delivered">Can\'t reach the hub, so that action didn\'t take effect</string>
+    <string name="designsystem_feedback_unknown">The result is unconfirmed. Check in the session.</string>
+    <string name="designsystem_feedback_delivered">The action was delivered. Check the result in the session.</string>
+    <string name="designsystem_feedback_failed_retry">The action didn\'t finish. Try again.</string>
+    <string name="designsystem_feedback_failed">The action didn\'t finish. Check its conditions.</string>
+    <!-- Why a call failed (after “Failed:”) -->
+    <string name="designsystem_reason_unreachable">Can\'t reach the hub</string>
+    <string name="designsystem_reason_unreadable">Couldn\'t read the hub\'s response</string>
+    <string name="designsystem_reason_unknown">Something went wrong</string>
+    <!-- Step progress -->
+    <string name="designsystem_step_pending">Waiting</string>
+    <string name="designsystem_step_active">In progress</string>
+    <string name="designsystem_step_complete">Done</string>
+    <string name="designsystem_step_failed">Not finished</string>
+    <string name="designsystem_labeled">%1$s: %2$s</string>
+    <!-- Between the items of a list read out in one go. -->
+    <string name="designsystem_separator">", "</string>
+    <!-- Agents list headings -->
+    <string name="designsystem_online">Online</string>
+    <string name="designsystem_offline">Offline</string>
+    <plurals name="designsystem_sessions">
+        <item quantity="one">%1$d session</item>
+        <item quantity="other">%1$d sessions</item>
+    </plurals>
+    <!-- A herdr tab of several agents (#2320) -->
+    <string name="designsystem_tab_launcher">Lead</string>
+    <!-- An Agents row's third line on Glass (#4338 A9): the to-do chip and the muted bell, for TalkBack -->
+    <string name="designsystem_row_todo">To-do: %1$s</string>
+    <string name="designsystem_row_muted">Notifications muted</string>
+    <string name="designsystem_row_style_avatar">Avatar</string>
+    <string name="designsystem_row_style_two_lines">Two lines</string>
+    <string name="designsystem_row_style_cards">State cards</string>
+    <string name="designsystem_row_style_list">Compact list</string>
+    <string name="designsystem_row_style_avatar_summary">The agent\'s avatar, its title and time, a line of what it last said, and where it runs.</string>
+    <string name="designsystem_row_style_two_lines_summary">Two lines per agent: its title and time, then one line of what it last said.</string>
+    <string name="designsystem_row_style_cards_summary">A card per agent, its state\'s color down the side; the one waiting for you is tinted.</string>
+    <string name="designsystem_row_style_list_summary">One line per agent: its state, title and time.</string>
+    <plurals name="designsystem_tab_agents">
+        <item quantity="one">%1$d agent</item>
+        <item quantity="other">%1$d agents</item>
+    </plurals>
+    <!-- An agent's card on the space page (#4338 A11): its state, then the tab's starter and its pending requests -->
+    <string name="designsystem_space_card_starter">%1$s · Started it</string>
+    <plurals name="designsystem_space_card_pending">
+        <item quantity="one">%1$s · %2$d pending</item>
+        <item quantity="other">%1$s · %2$d pending</item>
+    </plurals>
+    <string name="designsystem_group_expand">Expand group</string>
+    <string name="designsystem_group_collapse">Collapse group</string>
+    <string name="designsystem_show_all">Show All %1$d</string>
+    <string name="designsystem_show_fewer">Collapse</string>
+    <string name="designsystem_count_waiting_background">%1$d waiting in the background</string>
+    <string name="designsystem_machine_monitor">Machine monitor</string>
+    <string name="designsystem_details">Details</string>
+    <string name="designsystem_space">space</string>
+    <string name="designsystem_repository">Repository</string>
+    <string name="designsystem_main_worktree">Main worktree</string>
+    <string name="designsystem_worktree">Worktree</string>
+    <string name="designsystem_worktree_primary">Primary</string>
+    <string name="designsystem_worktree_detached">Detached HEAD</string>
+    <string name="designsystem_worktree_offline">This computer is offline</string>
+    <string name="designsystem_worktree_idle">Idle</string>
+    <string name="designsystem_expand_named">Expand %1$s</string>
+    <string name="designsystem_collapse_named">Collapse %1$s</string>
+    <plurals name="designsystem_idle_more">
+        <item quantity="one">%1$d more idle</item>
+        <item quantity="other">%1$d more idle</item>
+    </plurals>
+    <!-- By Repository's idle line (iOS RepoIdleLine, #4338 A8): "2 idle · review · research", then "Hide 2 Idle" -->
+    <plurals name="designsystem_idle_count">
+        <item quantity="one">%1$d idle</item>
+        <item quantity="other">%1$d idle</item>
+    </plurals>
+    <plurals name="designsystem_idle_hide">
+        <item quantity="one">Hide %1$d Idle</item>
+        <item quantity="other">Hide %1$d Idle</item>
+    </plurals>
+    <plurals name="designsystem_idle_show">
+        <item quantity="one">Show %1$d idle agent</item>
+        <item quantity="other">Show %1$d idle agents</item>
+    </plurals>
+    <string name="designsystem_folded">Collapsed</string>
+    <!-- Attachments, brands -->
+    <string name="designsystem_attachment_uploading">uploading</string>
+    <string name="designsystem_attachment_waiting">waiting to upload</string>
+    <string name="designsystem_attachment_failed">upload failed</string>
+    <string name="designsystem_attachment_invalid">no longer available</string>
+    <string name="designsystem_attachment_remove">Remove this one</string>
+    <string name="designsystem_attachment_edit">Edit</string>
+    <string name="designsystem_brand_persona">Persona</string>
+    <string name="designsystem_brand_lark">Lark</string>
+    <!-- An agent's mark (#6390): the agent, and the client it runs in. -->
+    <string name="designsystem_agent_mark_cli">%1$s, command line</string>
+    <string name="designsystem_agent_mark_desktop">%1$s, desktop app</string>
+    <string name="designsystem_channel_source">From %1$s</string>
+    <string name="designsystem_series_separator">"; "</string>
+    <!-- Chat parts: plans, work rows, the send button -->
+    <string name="designsystem_plan_spoken">Plan, step %1$d of %2$d, %3$s</string>
+    <string name="designsystem_plan_all_done">All done</string>
+    <string name="designsystem_plan_step">Step %1$d/%2$d</string>
+    <string name="designsystem_plan_item_done">Done</string>
+    <string name="designsystem_plan_item_active">In progress</string>
+    <string name="designsystem_plan_item_pending">To do</string>
+    <string name="designsystem_work_failed">Failed</string>
+    <string name="designsystem_work_waiting">Waiting for you</string>
+    <string name="designsystem_work_unknown">No result recorded</string>
+    <string name="designsystem_send">Send</string>
+    <string name="designsystem_composer_expand">Expand the message box</string>
+    <string name="designsystem_composer_collapse">Collapse the message box</string>
+    <string name="designsystem_send_stop">Stop</string>
+    <string name="designsystem_jump_latest">Jump to latest</string>
+    <plurals name="designsystem_jump_latest_new">
+        <item quantity="one">Jump to latest, %1$d new message</item>
+        <item quantity="other">Jump to latest, %1$d new messages</item>
+    </plurals>
+    <!-- Message contexts, pictures, API errors -->
+    <string name="designsystem_context_empty">Empty</string>
+    <string name="designsystem_context_no_content">No content</string>
+    <string name="designsystem_view_full">View full size</string>
+    <string name="designsystem_load_failed">Couldn\'t load</string>
+    <string name="designsystem_load_failed_tap">Couldn\'t load. Tap to retry.</string>
+    <string name="designsystem_api_error">API error: %1$s</string>
+    <string name="designsystem_details_expand">Show details</string>
+    <string name="designsystem_details_collapse">Hide details</string>
+    <string name="designsystem_view_file">View file</string>
+    <string name="designsystem_search_clear">Clear search</string>
+    <!-- Image editor and viewer -->
+    <string name="designsystem_markup_red">Red</string>
+    <string name="designsystem_markup_yellow">Yellow</string>
+    <string name="designsystem_markup_green">Green</string>
+    <string name="designsystem_markup_blue">Blue</string>
+    <string name="designsystem_markup_white">White</string>
+    <string name="designsystem_markup_black">Black</string>
+    <string name="designsystem_markup_box">Box</string>
+    <string name="designsystem_markup_pen">Pen</string>
+    <string name="designsystem_editor_title">Edit image</string>
+    <string name="designsystem_editor_failed">Couldn\'t apply the marks. Try again.</string>
+    <string name="designsystem_editor_picture">Image to edit</string>
+    <string name="designsystem_editor_undo">Undo</string>
+    <string name="designsystem_editor_clear">Clear</string>
+    <!-- The image editor's crop, turn, widths and redo (#4992, iOS ImageEditor) -->
+    <string name="designsystem_markup_crop">Crop</string>
+    <string name="designsystem_editor_rotate">Rotate</string>
+    <string name="designsystem_editor_reset">Reset</string>
+    <string name="designsystem_editor_redo">Redo</string>
+    <string name="designsystem_editor_shape">Aspect Ratio</string>
+    <string name="designsystem_editor_shape_free">Freeform</string>
+    <string name="designsystem_editor_shape_original">Original</string>
+    <string name="designsystem_editor_shape_square">Square</string>
+    <string name="designsystem_editor_width">Line Width</string>
+    <string name="designsystem_editor_width_thin">Thin</string>
+    <string name="designsystem_editor_width_medium">Medium</string>
+    <string name="designsystem_editor_width_thick">Thick</string>
+    <string name="designsystem_editor_shape_4x3" translatable="false">4:3</string>
+    <string name="designsystem_editor_shape_3x4" translatable="false">3:4</string>
+    <string name="designsystem_editor_shape_16x9" translatable="false">16:9</string>
+    <string name="designsystem_editor_shape_9x16" translatable="false">9:16</string>
+    <string name="designsystem_viewer_load_failed">Couldn\'t load the image</string>
+    <string name="designsystem_viewer_action_failed">That didn\'t finish. Try again.</string>
+    <!-- Formulas and diagrams in Markdown -->
+    <string name="designsystem_render_too_slow">Took too long to draw</string>
+    <string name="designsystem_render_nothing">Nothing was drawn</string>
+    <string name="designsystem_render_no_window">No window to draw in</string>
+    <string name="designsystem_render_page_missing">The rendering page is missing</string>
+    <string name="designsystem_render_page_not_loaded">The rendering page didn\'t load</string>
+    <string name="designsystem_render_failed">Couldn\'t draw it: %1$s</string>
+    <string name="designsystem_render_formula">Formula: %1$s</string>
+    <string name="designsystem_render_diagram">Diagram: %1$s</string>
+    <string name="designsystem_render_full_screen">View full screen</string>
+    <!-- Model picker -->
+    <string name="designsystem_model_title">Model</string>
+    <string name="designsystem_model_search_custom">Search, or enter a model ID</string>
+    <string name="designsystem_model_search">Search names or IDs</string>
+    <string name="designsystem_model_refresh_failed">Didn\'t refresh: %1$s</string>
+    <string name="designsystem_model_default">Default</string>
+    <string name="designsystem_model_unlisted">Current setting, not in the list</string>
+    <string name="designsystem_model_all">All models</string>
+    <string name="designsystem_model_results">Results</string>
+    <string name="designsystem_model_refresh">Refresh</string>
+    <string name="designsystem_model_none">No matches</string>
+    <string name="designsystem_model_none_detail">Try another name or ID.</string>
+    <string name="designsystem_model_use">Use “%1$s”</string>
+    <string name="designsystem_model_use_detail">Not in the list; saved with this ID</string>
+    <string name="designsystem_selected">Selected</string>
+    <!-- Page titles -->
+    <string name="designsystem_greeting_summary">%1$s. %2$s</string>
+    <string name="designsystem_greeting_morning">Good morning</string>
+    <string name="designsystem_greeting_noon">Good afternoon</string>
+    <string name="designsystem_greeting_afternoon">Good afternoon</string>
+    <string name="designsystem_greeting_evening">Good evening</string>
+    <!-- Two-pane divider, placeholders, queue, drafts -->
+    <string name="designsystem_pane_expand">Expand left pane</string>
+    <string name="designsystem_pane_resize">Resize the two panes</string>
+    <string name="designsystem_pane_collapsed">Left pane collapsed</string>
+    <string name="designsystem_pane_wider">Widen left pane</string>
+    <string name="designsystem_pane_narrower">Narrow left pane</string>
+    <string name="designsystem_pane_collapse">Collapse left pane</string>
+    <string name="designsystem_placeholder">Coming soon</string>
+    <string name="designsystem_qr_code">QR code</string>
+    <string name="designsystem_queue_actions">Queued message actions</string>
+    <string name="designsystem_queue_item">Item %1$d: %2$s</string>
+    <string name="designsystem_queue_item_note">Item %1$d: %2$s. %3$s</string>
+    <string name="designsystem_draft_ready">Persona drafted a reply</string>
+    <!-- Connection details (the title's sheet while the hub is out of reach) -->
+    <string name="designsystem_connection_online">Connected to the hub</string>
+    <string name="designsystem_connection_connecting">Connecting…</string>
+    <string name="designsystem_connection_updating">Updating…</string>
+    <string name="designsystem_connection_waiting">Waiting for network</string>
+    <string name="designsystem_connection_local_network">Needs local network access</string>
+    <string name="designsystem_connection_certificate">The hub\'s certificate changed</string>
+    <string name="designsystem_connection_revoked">Pairing is no longer valid</string>
+    <string name="designsystem_connection_online_text">Messages and status are up to date.</string>
+    <string name="designsystem_connection_connecting_text">There is a network, but the hub can\'t be reached (its computer may be off, asleep or offline). It keeps retrying by itself.</string>
+    <string name="designsystem_connection_updating_text">Connected again. Catching up on the messages and requests from while it was away.</string>
+    <string name="designsystem_connection_waiting_text">This phone has no network right now. It reconnects once the network is back, and messages written meanwhile go out by themselves.</string>
+    <string name="designsystem_connection_local_network_text">To reach a hub on this network, Persona needs local network access. Allow it in connection settings.</string>
+    <string name="designsystem_connection_certificate_text">The hub\'s certificate no longer matches the one from pairing, so Persona won\'t connect. Check it in connection settings.</string>
+    <string name="designsystem_connection_revoked_text">This phone\'s pairing was revoked. Pair again in connection settings.</string>
+    <string name="designsystem_connection_retry">Retry now</string>
+    <string name="designsystem_connection_settings">Connection settings</string>
+    <string name="designsystem_connection_last_failure">Last failure: %1$s</string>
+    <string name="designsystem_connection_retrying">Retrying…</string>
+    <string name="designsystem_connection_last_online">Last connected: %1$s</string>
+    <plurals name="designsystem_connection_retry_in">
+        <item quantity="one">Retrying in %1$d second</item>
+        <item quantity="other">Retrying in %1$d seconds</item>
+    </plurals>
+    <plurals name="designsystem_connection_waiting_messages">
+        <item quantity="one">%1$d message sends once connected</item>
+        <item quantity="other">%1$d messages send once connected</item>
+    </plurals>
+    <plurals name="designsystem_connection_seconds_ago">
+        <item quantity="one">%1$d second ago</item>
+        <item quantity="other">%1$d seconds ago</item>
+    </plurals>
+    <plurals name="designsystem_connection_minutes_ago">
+        <item quantity="one">%1$d minute ago</item>
+        <item quantity="other">%1$d minutes ago</item>
+    </plurals>
+    <string name="designsystem_workflow_untitled">Workflow</string>
+    <string name="designsystem_workflow_kind">Workflow</string>
+    <string name="designsystem_workflow_expand">Expand “%1$s”</string>
+    <string name="designsystem_workflow_collapse">Collapse “%1$s”</string>
+    <string name="designsystem_workflow_now_phase_agent">Now %1$s: %2$s</string>
+    <string name="designsystem_workflow_now_phase">Now %1$s</string>
+    <string name="designsystem_workflow_now_agent">Running %1$s</string>
+    <string name="designsystem_workflow_agent">agent</string>
+    <plurals name="designsystem_workflow_tally_done">
+        <item quantity="one">%1$d done</item>
+        <item quantity="other">%1$d done</item>
+    </plurals>
+    <plurals name="designsystem_workflow_tally_running">
+        <item quantity="one">%1$d running</item>
+        <item quantity="other">%1$d running</item>
+    </plurals>
+    <plurals name="designsystem_workflow_tally_failed">
+        <item quantity="one">%1$d failed</item>
+        <item quantity="other">%1$d failed</item>
+    </plurals>
+    <plurals name="designsystem_workflow_tally_stopped">
+        <item quantity="one">%1$d stopped</item>
+        <item quantity="other">%1$d stopped</item>
+    </plurals>
+    <plurals name="designsystem_workflow_calls">
+        <item quantity="one">%1$d tool call</item>
+        <item quantity="other">%1$d tool calls</item>
+    </plurals>
+    <string name="designsystem_workflow_phase_untitled">No phase</string>
+    <plurals name="designsystem_workflow_phase_failed">
+        <item quantity="one">%1$d failed</item>
+        <item quantity="other">%1$d failed</item>
+    </plurals>
+    <plurals name="designsystem_workflow_more_agents">
+        <item quantity="one">%1$d more</item>
+        <item quantity="other">%1$d more</item>
+    </plurals>
+    <plurals name="designsystem_workflow_unlisted_agents">
+        <item quantity="one">%1$d earlier one not listed</item>
+        <item quantity="other">%1$d earlier ones not listed</item>
+    </plurals>
+    <string name="designsystem_workflow_fewer_agents">Show fewer</string>
+    <string name="designsystem_workflow_phase_done">Finished phase</string>
+    <string name="designsystem_workflow_phase_done_failed">Finished with failures</string>
+    <string name="designsystem_workflow_phase_current">Current phase</string>
+    <string name="designsystem_workflow_phase_next">Phase not started</string>
+    <string name="designsystem_workflow_phase_stopped">Phase that did not finish</string>
+    <string name="designsystem_workflow_open_agent">Open %1$s’s conversation</string>
+    <string name="designsystem_scheme_system">Match system</string>
+    <string name="designsystem_scheme_light">Light</string>
+    <string name="designsystem_scheme_dark">Dark</string>
+    <string name="designsystem_color_style">Match style</string>
+    <string name="designsystem_color_persona">Match avatar</string>
+    <string name="designsystem_color_blue">System blue</string>
+    <string name="designsystem_color_coral">Coral</string>
+    <string name="designsystem_color_lavender">Lavender</string>
+    <string name="designsystem_color_teal">Teal</string>
+    <string name="designsystem_color_lark">Lark blue</string>
+    <string name="designsystem_candle">Open %1$s · High %2$s · Low %3$s · Close %4$s</string>
+    <string name="designsystem_candle_volume">Vol %1$s</string>
+    <string name="designsystem_stepper_minus">Decrease</string>
+    <string name="designsystem_stepper_plus">Increase</string>
+    <string name="designsystem_copy_too_large">Text too large to copy; use Share instead</string>
+    <string name="designsystem_copied">Copied</string>
+</resources>

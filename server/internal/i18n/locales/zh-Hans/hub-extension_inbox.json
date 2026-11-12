@@ -1,0 +1,4 @@
+{
+  "needs_triage_model": "先在 设置 › 模型 里配好『信息筛选』，再启用这个扩展",
+  "needs_triage_setup": "需要先配分拣模型"
+}

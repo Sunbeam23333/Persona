@@ -1,0 +1,10 @@
+{
+  "no_text": "(No text answer this turn)",
+  "no_text_stopped": "This turn stopped without a text answer: {reason}",
+  "not_delivered": "I couldn't confirm that the message was delivered. Please send it again.",
+  "feishu": "Feishu",
+  "no_answer": "No answer came out of this turn. Why: {reason}",
+  "reason_placeholder": "the assistant only wrote a placeholder (“{text}”)",
+  "reason_silent": "the assistant ended the turn without writing anything, also when asked again",
+  "machine_gone": "That computer is no longer in Persona (it was removed), so nothing will answer this message; send it again to another target."
+}

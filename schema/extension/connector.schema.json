@@ -1,0 +1,1419 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "connector.schema.json",
+  "title": "Connector protocol",
+  "description": "The connectors extension point's calls (docs/protocol/connector-protocol.md, protocol 2): what the hub asks a connector program (connector.<method>) and what the program asks back (connector.secrets.*, connector.posts.*, connector.archive.chats, connector.credentials.gh_token, sent.record, the connector.changed event). Every params object carries contribution, the connector's id; results do not. Plugin-side: only the hub and the program speak it.",
+  "x-side": "plugin",
+  "x-methods": {
+    "connector.status": {"from": "hub", "params": "ConnectorParams", "result": "ConnectorStatus"},
+    "connector.manifest": {"from": "hub", "params": "ConnectorParams", "result": "ConnectorManifest"},
+    "connector.catalog.list": {"from": "hub", "params": "ConnectorParams", "result": "ConnectorCatalog"},
+    "connector.catalog.call": {"from": "hub", "params": "ConnectorCatalogCallParams", "result": "ConnectorCallResult"},
+    "connector.tools.list": {"from": "hub", "params": "ConnectorParams", "result": "ConnectorTools"},
+    "connector.tools.call": {"from": "hub", "params": "ConnectorCallParams", "result": "ConnectorCallResult"},
+    "connector.actions.list": {"from": "hub", "params": "ConnectorParams", "result": "ConnectorTools"},
+    "connector.actions.describe": {"from": "hub", "params": "ConnectorCallParams", "result": "ConnectorDescribeResult"},
+    "connector.actions.do": {"from": "hub", "params": "ConnectorDoParams", "result": "ConnectorCallResult"},
+    "connector.recall": {"from": "hub", "params": "ConnectorRecallParams", "result": "ConnectorRecallResult"},
+    "connector.recall.can": {"from": "hub", "params": "ConnectorRecallCanParams", "result": "ConnectorRecallCanResult"},
+    "connector.recall.do": {"from": "hub", "params": "ConnectorRecallDoParams", "result": "ConnectorRecallDoResult"},
+    "connector.thread.page": {"from": "hub", "params": "ConnectorThreadParams", "result": "ConnectorThreadPage"},
+    "connector.thread.media": {"from": "hub", "params": "ConnectorMediaParams", "result": "ConnectorMedia"},
+    "connector.inbox.collect": {"from": "hub", "params": "ConnectorParams", "result": "ConnectorCollectResult"},
+    "connector.inbox.reply": {"from": "hub", "params": "ConnectorInboxReply", "result": "Empty"},
+    "connector.inbox.settle": {"from": "hub", "params": "ConnectorSettleParams", "result": "ConnectorSettled"},
+    "connector.archive.changes": {"from": "hub", "params": "ConnectorChangesParams", "result": "ConnectorChangesResult"},
+    "connector.archive.media": {"from": "hub", "params": "ConnectorMediaParams", "result": "ConnectorMedia"},
+    "connector.history.chats": {"from": "hub", "params": "ConnectorParams", "result": "ConnectorHistoryChats"},
+    "connector.archive.history": {"from": "hub", "params": "ConnectorHistoryParams", "result": "ConnectorHistoryPage"},
+    "connector.history.anchors": {"from": "hub", "params": "ConnectorHistoryAnchorsParams", "result": "ConnectorHistoryAnchors"},
+    "connector.items.list": {"from": "hub", "params": "ConnectorParams", "result": "ConnectorItems"},
+    "connector.items.doc_title": {"from": "hub", "params": "ConnectorDocTitleParams", "result": "ConnectorDocTitle"},
+    "connector.snapshot.get": {"from": "hub", "params": "ConnectorSnapshotParams", "result": "ConnectorSnapshot"},
+    "connector.group.tool": {"from": "hub", "params": "ConnectorGroupToolParams"},
+    "connector.group.append": {"from": "hub", "params": "ConnectorGroupAppendParams", "result": "ConnectorInboxThing"},
+    "connector.group.fallback": {"from": "hub", "params": "ConnectorGroupFallbackParams", "result": "ConnectorGroupFallback"},
+    "connector.login.step": {"from": "hub", "params": "ConnectorLoginParams", "result": "ConnectorPrompt"},
+    "connector.logout": {"from": "hub", "params": "ConnectorParams", "result": "Empty"},
+    "connector.options.get": {"from": "hub", "params": "ConnectorParams", "result": "ConnectorOptions"},
+    "connector.options.set": {"from": "hub", "params": "ConnectorOptionsParams", "result": "Empty"},
+    "connector.machines.online": {"from": "hub", "params": "ConnectorMachineParams", "result": "Empty"},
+    "connector.auth.get": {"from": "hub", "params": "ConnectorParams", "result": "ConnectorAuth"},
+    "connector.auth.set": {"from": "hub", "params": "ConnectorAuthSource", "result": "ConnectorAuth"},
+    "connector.secrets.load": {"from": "program", "params": "ConnectorParams", "result": "ConnectorSecret"},
+    "connector.secrets.save": {"from": "program", "params": "ConnectorSecretSaveParams", "result": "Empty"},
+    "connector.secrets.delete": {"from": "program", "params": "ConnectorParams", "result": "Empty"},
+    "connector.posts.put": {"from": "program", "params": "ConnectorPostsPutParams", "result": "ConnectorPostsPut"},
+    "connector.posts.comments": {"from": "program", "params": "ConnectorPostsCommentsParams", "result": "Empty"},
+    "connector.posts.pending": {"from": "program", "params": "ConnectorPostsPendingParams", "result": "ConnectorPostsPending"},
+    "connector.archive.chats": {"from": "program", "params": "ConnectorArchiveChatsParams", "result": "ConnectorArchivedChats"},
+    "connector.credentials.gh_token": {"from": "program", "params": "ConnectorGhTokenParams", "result": "ConnectorGhToken"},
+    "sent.record": {"from": "program", "params": "ConnectorSentRecordParams", "result": "Empty"}
+  },
+  "x-events": {
+    "connector.changed": {"from": "program", "params": "ConnectorChangedEvent"}
+  },
+  "$defs": {
+    "ConnectorCatalog": {
+      "type": "object",
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConnectorCatalogSource"
+          }
+        }
+      },
+      "required": [
+        "sources"
+      ],
+      "description": "catalog.list: subscribable sources. An empty catalog is an empty sources list."
+    },
+    "ConnectorCatalogSource": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "icon": {
+          "$ref": "view.schema.json#/$defs/NavIcon"
+        },
+        "service": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*:[A-Za-z0-9][A-Za-z0-9.-]*$"
+        },
+        "min_interval_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "x-go-pointer": true
+        },
+        "max_calls_per_hour": {
+          "type": "integer",
+          "minimum": 1,
+          "x-go-pointer": true,
+          "description": "A shared connector/account budget, across all its sources."
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConnectorCatalogTool"
+          }
+        },
+        "recipes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConnectorSubscriptionRecipe"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "tools"
+      ],
+      "description": "A stable source id, independent of its display name. Tool names are short and unique within this source."
+    },
+    "ConnectorCatalogTool": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "input_schema": {
+          "description": "A JSON object containing the tool input schema."
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "annotations": {
+          "$ref": "#/$defs/ConnectorCatalogAnnotations"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "input_schema",
+        "read_only"
+      ]
+    },
+    "ConnectorCatalogAnnotations": {
+      "type": "object",
+      "properties": {
+        "read_only_hint": {
+          "type": "boolean",
+          "x-go-pointer": true
+        },
+        "destructive_hint": {
+          "type": "boolean",
+          "x-go-pointer": true
+        }
+      },
+      "description": "When present, hints must agree with read_only: true and destructive: false."
+    },
+    "ConnectorCatalogCallParams": {
+      "type": "object",
+      "properties": {
+        "contribution": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "args": {}
+      },
+      "required": [
+        "contribution",
+        "source",
+        "tool"
+      ],
+      "description": "catalog.call: a source and one of its read-only short tool names. args is an object, default {}."
+    },
+    "ConnectorSubscriptionMode": {
+      "type": "string",
+      "enum": [
+        "items",
+        "snapshot"
+      ]
+    },
+    "ConnectorSubscriptionGroup": {
+      "type": "string",
+      "enum": [
+        "source",
+        "thread"
+      ]
+    },
+    "ConnectorSubscriptionKind": {
+      "type": "string",
+      "enum": [
+        "sub_mail",
+        "sub_message",
+        "sub_notice",
+        "sub_deadline",
+        "sub_event",
+        "sub_update",
+        "sub_digest"
+      ]
+    },
+    "ConnectorSubscriptionFields": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^\\$(?:\\.[A-Za-z_][A-Za-z0-9_-]*|\\[[0-9]+\\])*$"
+        },
+        "thread": {
+          "type": "string",
+          "pattern": "^\\$(?:\\.[A-Za-z_][A-Za-z0-9_-]*|\\[[0-9]+\\])*$"
+        },
+        "title": {
+          "type": "string",
+          "pattern": "^\\$(?:\\.[A-Za-z_][A-Za-z0-9_-]*|\\[[0-9]+\\])*$"
+        },
+        "sender": {
+          "type": "string",
+          "pattern": "^\\$(?:\\.[A-Za-z_][A-Za-z0-9_-]*|\\[[0-9]+\\])*$"
+        },
+        "time": {
+          "type": "string",
+          "pattern": "^\\$(?:\\.[A-Za-z_][A-Za-z0-9_-]*|\\[[0-9]+\\])*$"
+        },
+        "body": {
+          "type": "string",
+          "pattern": "^\\$(?:\\.[A-Za-z_][A-Za-z0-9_-]*|\\[[0-9]+\\])*$"
+        },
+        "link": {
+          "type": "string",
+          "pattern": "^\\$(?:\\.[A-Za-z_][A-Za-z0-9_-]*|\\[[0-9]+\\])*$"
+        },
+        "due_date": {
+          "type": "string",
+          "pattern": "^\\$(?:\\.[A-Za-z_][A-Za-z0-9_-]*|\\[[0-9]+\\])*$"
+        }
+      },
+      "description": "Paths relative to one item. Only $, .field and [index] are supported; no expressions or recursive descent."
+    },
+    "ConnectorSubscriptionRecipe": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/ConnectorSubscriptionMode"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "args": {},
+        "items_path": {
+          "type": "string",
+          "pattern": "^\\$(?:\\.[A-Za-z_][A-Za-z0-9_-]*|\\[[0-9]+\\])*$"
+        },
+        "fields": {
+          "$ref": "#/$defs/ConnectorSubscriptionFields"
+        },
+        "kind": {
+          "$ref": "#/$defs/ConnectorSubscriptionKind"
+        },
+        "group_by": {
+          "$ref": "#/$defs/ConnectorSubscriptionGroup"
+        }
+      },
+      "required": [
+        "mode",
+        "tool",
+        "kind",
+        "group_by"
+      ],
+      "description": "A pull recipe, not a schedule. args is an object (default {}); strings may contain {{since}} or {{since_date}}. items_path defaults to $; fields are relative to one item. Text results require snapshot mode. Runtime argument/schema and mapped-value validation belongs to the subscription runner."
+    },
+    "ConnectorErrorCode": {
+      "description": "error.code a program answers or gets besides the base ErrorCode: rate_limited (tools.call / actions.do, and the hub's answer to too many sent.record; data {retry_after} in seconds, fractional allowed), why credentials.gh_token has no token, and what recall answers: not_recallable (nothing was sent: the program cannot take that message back) and recall_unknown (the request may have taken effect). not_signed_in, offline and rate_limited also say that recall could not act now. not_read_only refuses a catalog.call outside the current read-only catalog.",
+      "type": "string",
+      "enum": ["rate_limited", "no_machine", "offline", "node_too_old", "no_gh", "not_signed_in", "not_recallable", "recall_unknown", "not_read_only"]
+    },
+    "ConnectorCapability": {
+      "description": "What a connector declares (ConnectorItem.capabilities): the hub calls only the methods of declared ones. fallback has no method: every inbox thing promises extra.rule_tier. recall is the program's word that it can take back what it sent: the hub calls recall.can / recall.do after the user agreed, or legacy connector.recall for a program without those methods, and the install preview says so. history (needs archive) is history.chats and archive.history, history_anchors (needs history) is history.anchors. catalog lists subscribable read-only sources and calls their short tool names. An extension's connector with one this hub does not know loses only that capability.",
+      "type": "string",
+      "enum": ["status", "tools", "actions", "events", "inbox", "settle", "archive", "chats", "items", "login",
+               "options", "threads", "snapshot", "group", "meta", "fallback", "machines", "recall", "history",
+               "history_anchors", "catalog"]
+    },
+    "ConnectorState": {
+      "description": "ConnectorStatus.state. disabled is the hub's own (the user switched it off); a program never answers it.",
+      "type": "string",
+      "enum": ["ok", "not_configured", "not_signed_in", "no_permission", "rate_limited", "error", "disabled"]
+    },
+    "ConnectorScope": {
+      "description": "What changed (ConnectorChangedEvent.scope): the knowledge base's chats or items, or the inbox. Another scope is dropped and logged.",
+      "type": "string",
+      "enum": ["chats", "items", "inbox"]
+    },
+    "ConnectorTier": {
+      "description": "An inbox thing's tier by the connector's own rules: needs the user, worth knowing, noise. Empty leaves it to the model.",
+      "type": "string",
+      "enum": ["action", "fyi", "noise"]
+    },
+    "ConnectorDone": {
+      "description": "ConnectorInboxThing.done: the thread is over without the user (read), or the user answered (replied).",
+      "type": "string",
+      "enum": ["read", "replied"]
+    },
+    "ConnectorTagKey": {
+      "description": "ConnectorTag.key values the hub knows: the user can mute by repo, chat and sender. Others are kept for rules.",
+      "type": "string",
+      "enum": ["repo", "chat", "sender", "branch"]
+    },
+    "ConnectorPromptKind": {
+      "description": "ConnectorPrompt.kind besides fields to fill in (empty): a code to enter on a web page, or a URL to scan as a QR code. For both the app asks the same step again, without values, every interval seconds.",
+      "type": "string",
+      "enum": ["device_code", "qr"]
+    },
+    "ConnectorPostStatus": {
+      "description": "What connector.posts.put says of each post: first time in the archive, its comment count moved, or refused (no id, or another connector's). An empty string is a post seen unchanged.",
+      "type": "string",
+      "enum": ["new", "changed", "refused"]
+    },
+    "ConnectorGroupTool": {
+      "description": "The tools a grouping connector answers in group.tool (the model reads the conversation with them); another may answer unknown_method.",
+      "type": "string",
+      "enum": ["messages_before", "messages_around", "search"]
+    },
+
+    "Empty": {
+      "description": "An answer with nothing in it: {}.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "ConnectorInitParams": {
+      "description": "init, the bare opening of protocol 2 without the extension protocol (kept one release; the hub opens with initialize). Answered with ConnectorManifest.",
+      "type": "object",
+      "properties": {
+        "protocol": {"type": "integer", "const": 2},
+        "config": {"description": "The connector's settings."}
+      },
+      "required": ["protocol"]
+    },
+    "ConnectorManifest": {
+      "description": "What the program says it is: init's answer, and connector.manifest's. The fields are ConnectorItem's (manifest.schema.json) with the protocol.",
+      "type": "object",
+      "properties": {
+        "protocol": {"type": "integer"},
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "capabilities": {"type": "array", "items": {"type": "string"}},
+        "hosts": {"type": "array", "items": {"type": "string"}},
+        "agent_tools": {"type": "array", "items": {"type": "string"}},
+        "unlisted": {"type": "array", "items": {"type": "string"}},
+        "confirm_always": {"type": "array", "items": {"type": "string"}},
+        "poll_seconds": {"type": "integer", "minimum": 0},
+        "kinds": {"type": "array", "items": {"type": "string"}},
+        "archive_sources": {"type": "array", "maxItems": 4, "items": {"type": "string"}},
+        "meta_description": {"type": "string", "maxLength": 4000},
+        "cli": {"type": "string"}
+      },
+      "required": ["protocol", "id", "name", "capabilities"]
+    },
+    "ConnectorParams": {
+      "description": "The params of a call without any of its own (status, tools.list, actions.list, inbox.collect, items.list, logout, options.get, auth.get; secrets.load, secrets.delete).",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"}
+      },
+      "required": ["contribution"]
+    },
+    "ConnectorStatus": {
+      "description": "connector.status: how the connector is doing, from memory (no network; the hub asks every 30 seconds). Only an ok connector offers tools.",
+      "type": "object",
+      "properties": {
+        "state": {"$ref": "#/$defs/ConnectorState"},
+        "account": {"type": "string", "description": "Who it reads as, for display."},
+        "via": {"type": "string", "description": "Where the sign-in comes from."},
+        "error": {"type": "string", "description": "One sentence for people when state is not ok; never a secret."},
+        "guide": {"type": "array", "items": {"type": "string"}, "description": "How to fix it, a step a sentence."},
+        "guide_url": {"type": "string", "format": "uri", "description": "Optional HTTPS page the App may open for the fix; never a secret."},
+        "missing_scopes": {"type": "array", "items": {"type": "string"}, "description": "Permissions the connector can identify as absent."},
+        "last_sync": {"type": "string", "format": "date-time"},
+        "last_event": {"type": "string", "format": "date-time"}
+      },
+      "required": ["state"]
+    },
+    "ConnectorTool": {
+      "description": "A read tool (tools.list) or a write (actions.list): its name starts with <connector id>_.",
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "description": {"type": "string"},
+        "input_schema": {"description": "A JSON Schema with type object."},
+        "shell": {"type": "array", "items": {"type": "string"}, "description": "Words that run the tool in a shell instead (a gated command's); runtimes refuse them in an assistant conversation."}
+      },
+      "required": ["name", "description", "input_schema"]
+    },
+    "ConnectorTools": {
+      "description": "tools.list and actions.list.",
+      "type": "object",
+      "properties": {
+        "tools": {"type": "array", "items": {"$ref": "#/$defs/ConnectorTool"}}
+      }
+    },
+    "ConnectorCallParams": {
+      "description": "tools.call, and actions.describe (what the phone's card says before a write).",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "name": {"type": "string"},
+        "args": {}
+      },
+      "required": ["contribution", "name"]
+    },
+    "ConnectorCallResult": {
+      "description": "tools.call and actions.do.",
+      "type": "object",
+      "properties": {
+        "text": {"type": "string"},
+        "message_ref": {"type": "string", "description": "actions.do only (tools.call ignores it): the id, on the other side, of the message the write made, when the service gave one (a comment's id, a mail's Message-ID, a chat message's id). The hub trims it and keeps it as the sent-as-user ledger row's message_ref; one longer than 200 characters is dropped (the row has none), not cut. Leave it out when there is none."}
+      }
+    },
+    "ConnectorAction": {
+      "description": "A write as the card names it: visible says who will see it.",
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "visible": {"type": "string"}
+      }
+    },
+    "ConnectorDescribeResult": {
+      "description": "actions.describe: the card's action and its full content. No network; an error refuses the call before the user is asked.",
+      "type": "object",
+      "properties": {
+        "action": {"$ref": "#/$defs/ConnectorAction"},
+        "summary": {"type": "string"}
+      },
+      "required": ["action", "summary"]
+    },
+    "ConnectorDoParams": {
+      "description": "actions.do, only once the hub's gate let the write through: the very args of the card, and the hub's id for this run (the same if it is ever sent again: the program runs it once).",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "name": {"type": "string"},
+        "args": {},
+        "request_id": {"type": "string", "minLength": 1}
+      },
+      "required": ["contribution", "name", "request_id"]
+    },
+    "ConnectorRecallParams": {
+      "description": "recall: take back a message the connector's program sent in the user's name, which the sent-as-user ledger has a row of (docs/extensions/connectors.md \"Sent as the user\"). Only for a connector that declares the capability recall, and only once the user agreed on their own device; the program never starts one. The fields are the row's, as the hub kept them: nothing of what the message said. A repeat after success is a success too. Answer with ConnectorRecallResult (recalled true) only when the service confirms the message is no longer there, one that was already gone included; otherwise an error: not_recallable (it cannot, and nothing was sent), not_signed_in, offline or rate_limited (it cannot act now), recall_unknown (it may have gone through), any other error is the service refusing, with one sentence for people (no secret, no text of the message).",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "action": {"type": "string", "description": "What wrote it: the tool's name (actions.do), sent.record, or, for a write the node's gate forwarded, \"METHOD /path\"."},
+        "message_ref": {"type": "string", "minLength": 1, "description": "The sent message's id on the other side, as the program gave it (actions.do or sent.record) or as the service's answer did (a write through the node's gate)."},
+        "target": {"type": "object", "description": "Where it went, as the ledger kept it (short values): the program's own for a send it recorded; for a write through the node's gate also method, path and command (the gate's name), and the ids its path names."},
+        "at": {"type": "string", "format": "date-time", "description": "When the ledger wrote the row, right after the send."}
+      },
+      "required": ["contribution", "action", "message_ref"]
+    },
+    "ConnectorRecallResult": {
+      "description": "Legacy recall's answer: recalled true is the program's word that the service confirmed the message is no longer there. Anything else (no recalled, false) is not taken for a yes: the hub then knows nothing, writes nothing and lets the user ask again.",
+      "type": "object",
+      "properties": {
+        "recalled": {"type": "boolean"}
+      },
+      "required": ["recalled"]
+    },
+    "ConnectorRecallCanParams": {
+      "description": "recall.can's read-only, memory-only preflight. The hub asks it immediately before recall.do, not for every row of a ledger page. age_seconds is the sent row's age, clamped at zero for a future timestamp.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "action": {"type": "string", "minLength": 1},
+        "age_seconds": {"type": "integer", "minimum": 0, "maximum": 3153600000}
+      },
+      "required": ["contribution", "action", "age_seconds"]
+    },
+    "ConnectorRecallCanResult": {
+      "description": "recall.can's answer. can false stops before any write and means not_recallable.",
+      "type": "object",
+      "properties": {
+        "can": {"type": "boolean"}
+      },
+      "required": ["can"]
+    },
+    "ConnectorRecallDoParams": {
+      "description": "recall.do takes back one message after the user agreed on their own full device. request_id is stable for this connector and external message: concurrent duplicates share one operation, and a confirmed success can be replayed after a lost answer. A failure or unknown outcome may be tried again explicitly. at is retained for connectors whose own recall window counts from the send. No message text, origin, approval record, account or credential is included.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "request_id": {"type": "string", "minLength": 1},
+        "action": {"type": "string", "minLength": 1},
+        "message_ref": {"type": "string", "minLength": 1},
+        "target": {"type": "object"},
+        "at": {"type": "string", "format": "date-time"}
+      },
+      "required": ["contribution", "request_id", "action", "message_ref"]
+    },
+    "ConnectorRecallOutcome": {
+      "description": "recall.do's outcome. Only done and already_recalled say the message is known to be gone. unknown may have taken effect and is never success.",
+      "type": "string",
+      "enum": ["done", "already_recalled", "not_recallable", "unavailable", "refused", "unknown"]
+    },
+    "ConnectorRecallDoResult": {
+      "description": "recall.do's result. error is one human-readable sentence for a non-success status, never a secret or the message's text. An empty or unrecognized status is treated as unknown by the hub.",
+      "type": "object",
+      "properties": {
+        "status": {"$ref": "#/$defs/ConnectorRecallOutcome"},
+        "error": {"type": "string"}
+      },
+      "required": ["status"]
+    },
+
+    "ConnectorThreadParams": {
+      "description": "thread.page: one page of an inbox thread, oldest first; no before is the newest page.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "thread": {"type": "string"},
+        "before": {"type": "string"},
+        "limit": {"type": "integer", "minimum": 0, "maximum": 50}
+      },
+      "required": ["contribution", "thread"]
+    },
+    "ConnectorThreadPage": {
+      "description": "thread.page's answer: before goes back one more page (none: the start).",
+      "type": "object",
+      "properties": {
+        "chat": {"$ref": "#/$defs/ConnectorThreadChat"},
+        "messages": {"type": "array", "items": {"$ref": "#/$defs/ConnectorThreadMessage"}},
+        "before": {"type": "string"}
+      },
+      "required": ["chat", "messages"]
+    },
+    "ConnectorThreadChat": {
+      "description": "The conversation the thread is. state … body_format are a pull request's or an issue's.",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "kind": {"type": "string", "description": "dm, group, channel (bubbles); pr, issue."},
+        "url": {"type": "string"},
+        "avatar": {"type": "string", "description": "A media ref (thread.media)."},
+        "members": {"type": "integer"},
+        "reply": {"type": "string", "description": "The action that answers here, with {chat: <thread>, text, reply_to}; none when the user cannot."},
+        "state": {"type": "string", "description": "open, merged, closed or draft."},
+        "author": {"$ref": "#/$defs/ConnectorThreadPerson"},
+        "labels": {"type": "array", "items": {"$ref": "#/$defs/ConnectorThreadLabel"}},
+        "branch": {"$ref": "#/$defs/ConnectorThreadBranch"},
+        "body": {"type": "string"},
+        "body_format": {"type": "string", "description": "Empty or markdown."}
+      },
+      "required": ["id", "name", "kind"]
+    },
+    "ConnectorThreadMessage": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "at": {"type": "string", "format": "date-time"},
+        "sender": {"$ref": "#/$defs/ConnectorThreadPerson"},
+        "mine": {"type": "boolean"},
+        "event": {"type": "boolean", "description": "A line of the thread's own (joined, renamed, merged): no bubble."},
+        "text": {"type": "string"},
+        "format": {"type": "string", "description": "Empty or markdown."},
+        "media": {"type": "array", "items": {"$ref": "#/$defs/ConnectorThreadMedia"}},
+        "reply_to": {"$ref": "#/$defs/ConnectorThreadQuote"},
+        "edited": {"type": "boolean"},
+        "url": {"type": "string"},
+        "kind": {"type": "string", "description": "Empty for a message; review, code (a comment on a line), check (CI)."},
+        "review": {"type": "string", "description": "approved, changes_requested, commented or dismissed."},
+        "code": {"$ref": "#/$defs/ConnectorThreadCode"},
+        "check": {"$ref": "#/$defs/ConnectorThreadCheck"}
+      },
+      "required": ["id", "at", "sender"]
+    },
+    "ConnectorThreadPerson": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "avatar": {"type": "string", "description": "A media ref."}
+      },
+      "required": ["name"]
+    },
+    "ConnectorThreadMedia": {
+      "description": "A picture, sticker, video, voice message or file: ref and thumb are media refs; a file or voice message is only described.",
+      "type": "object",
+      "properties": {
+        "kind": {"type": "string", "description": "image, sticker, video, voice or file."},
+        "ref": {"type": "string"},
+        "thumb": {"type": "string"},
+        "mime": {"type": "string"},
+        "name": {"type": "string"},
+        "size": {"type": "integer", "x-go-type": "int64"},
+        "duration": {"type": "integer", "description": "Seconds."},
+        "width": {"type": "integer"},
+        "height": {"type": "integer"},
+        "emoji": {"type": "string", "description": "A sticker's."}
+      },
+      "required": ["kind"]
+    },
+    "ConnectorThreadQuote": {
+      "description": "The message another one answers, as much as the page could tell.",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "from": {"type": "string"},
+        "text": {"type": "string"}
+      },
+      "required": ["id"]
+    },
+    "ConnectorThreadLabel": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "color": {"type": "string", "description": "Six hex digits."}
+      },
+      "required": ["name"]
+    },
+    "ConnectorThreadBranch": {
+      "type": "object",
+      "properties": {
+        "head": {"type": "string"},
+        "base": {"type": "string"}
+      },
+      "required": ["head", "base"]
+    },
+    "ConnectorThreadCode": {
+      "description": "The line a code comment is on, and the end of the diff before it.",
+      "type": "object",
+      "properties": {
+        "path": {"type": "string"},
+        "line": {"type": "integer"},
+        "hunk": {"type": "string"}
+      },
+      "required": ["path"]
+    },
+    "ConnectorThreadCheck": {
+      "description": "A CI run: success, failure, pending, skipped or cancelled, and a failed one's log end (at most 8 KB).",
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "state": {"type": "string"},
+        "url": {"type": "string"},
+        "log": {"type": "string"}
+      },
+      "required": ["name", "state"]
+    },
+    "ConnectorMediaParams": {
+      "description": "thread.media and archive.media: a ref the connector made. Refs never change meaning (the app caches them for good).",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "ref": {"type": "string"}
+      },
+      "required": ["contribution", "ref"]
+    },
+    "ConnectorMedia": {
+      "description": "Media bytes, base64: at most 4 MB from thread.media, 20 MB from archive.media.",
+      "type": "object",
+      "properties": {
+        "mime": {"type": "string"},
+        "data": {"type": "string", "description": "Base64."}
+      },
+      "required": ["mime", "data"]
+    },
+
+    "ConnectorCollectResult": {
+      "description": "inbox.collect, from memory: the threads that may need the user.",
+      "type": "object",
+      "properties": {
+        "things": {"type": "array", "items": {"$ref": "#/$defs/ConnectorInboxThing"}}
+      }
+    },
+    "ConnectorInboxThing": {
+      "description": "One thread that may need the user; the hub makes inbox items of them. With group it is a batch of a conversation's new messages instead (docs \"Event grouping\"); with id and meta it is an event (group.append's answer).",
+      "type": "object",
+      "properties": {
+        "thread": {"type": "string", "description": "The connector's stable key of the thread."},
+        "kind": {"type": "string", "description": "One of the manifest's kinds."},
+        "label": {"type": "string"},
+        "title": {"type": "string"},
+        "sender": {"type": "string"},
+        "preview": {"type": "string"},
+        "context": {"type": "string", "description": "The thread as text, for triage, drafting and the AI twin."},
+        "at": {"type": "string", "format": "date-time"},
+        "last": {"type": "string", "description": "Marks the newest move: a different last adds to the open item."},
+        "url": {"type": "string"},
+        "open_url": {"type": "string", "description": "A link the system opens instead (sms:…)."},
+        "reply_to": {"type": "string", "description": "Where a reply goes and who sees it."},
+        "can_reply": {"type": "boolean"},
+        "tier": {"type": "string", "description": "ConnectorTier, or empty for the model."},
+        "why": {"type": "string"},
+        "rules": {"type": "string", "maxLength": 4000, "description": "The user's own triage rules for this source or account; when set the model gets them instead of the hub's."},
+        "done": {"type": "string", "description": "ConnectorDone: ends the open item."},
+        "read": {"type": "boolean"},
+        "tags": {"type": "array", "items": {"$ref": "#/$defs/ConnectorTag"}},
+        "extra": {"$ref": "#/$defs/ConnectorThingExtra"},
+        "group": {"$ref": "#/$defs/ConnectorThingGroup"},
+        "id": {"type": "string"},
+        "meta": {"description": "An event's own state, kept and handed back by the hub as it is."},
+        "parent": {"$ref": "#/$defs/ConnectorThingParent"}
+      },
+      "required": ["thread", "kind"]
+    },
+    "ConnectorTag": {
+      "type": "object",
+      "properties": {
+        "key": {"type": "string", "description": "ConnectorTagKey, or the connector's own."},
+        "value": {"type": "string"},
+        "name": {"type": "string"}
+      },
+      "required": ["key", "value"]
+    },
+    "ConnectorThingExtra": {
+      "description": "Fields beyond the generic thing: rule_tier for a fallback connector; the rest only for a connector taking over one of the hub's own (lark, github).",
+      "type": "object",
+      "properties": {
+        "source": {"type": "string"},
+        "account": {"type": "string"},
+        "account_name": {"type": "string"},
+        "legacy_id": {"type": "string"},
+        "avatar": {"type": "string"},
+        "count": {"type": "integer"},
+        "started_at": {"type": "string", "format": "date-time"},
+        "rule_tier": {"type": "string"},
+        "lark": {},
+        "doc": {},
+        "moment": {}
+      }
+    },
+    "ConnectorThingGroup": {
+      "description": "A batch to relate: its id (the same each time the batch is handed again) and its new messages' ids.",
+      "type": "object",
+      "properties": {
+        "batch": {"type": "string"},
+        "new": {"type": "array", "items": {"type": "string"}}
+      },
+      "required": ["batch", "new"]
+    },
+    "ConnectorThingParent": {
+      "description": "What the thing grew out of: kind inbox (an item's id), todo (a todo's id) or session (<machine>/<session>).",
+      "type": "object",
+      "properties": {
+        "kind": {"type": "string"},
+        "id": {"type": "string"}
+      },
+      "required": ["kind", "id"]
+    },
+    "ConnectorInboxReply": {
+      "description": "inbox.reply: the user pressed Send, itself the confirmation. client_id makes a retry go out once; changes move a document row's status first (text may then be empty).",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "thread": {"type": "string"},
+        "item_id": {"type": "string"},
+        "last": {"type": "string"},
+        "text": {"type": "string"},
+        "client_id": {"type": "string"},
+        "changes": {"type": "array", "items": {"$ref": "#/$defs/ConnectorStatusChange"}}
+      },
+      "required": ["contribution", "thread"]
+    },
+    "ConnectorStatusChange": {
+      "type": "object",
+      "properties": {
+        "ref": {"type": "string"},
+        "field": {"type": "string"},
+        "value": {"type": "string"}
+      },
+      "required": ["ref", "field", "value"]
+    },
+    "ConnectorSettleParams": {
+      "description": "inbox.settle: the threads of the items the hub still has open.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "threads": {"type": "array", "items": {"type": "string"}}
+      },
+      "required": ["contribution", "threads"]
+    },
+    "ConnectorSettled": {
+      "description": "inbox.settle's answer: why each thread that is over is (the hub files them done).",
+      "type": "object",
+      "properties": {
+        "settled": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+
+    "ConnectorGroupToolParams": {
+      "description": "group.tool: one of ConnectorGroupTool for the model, args as the model wrote them. Answered with any JSON.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "thread": {"type": "string"},
+        "name": {"type": "string"},
+        "args": {}
+      },
+      "required": ["contribution", "thread", "name"]
+    },
+    "ConnectorGroupAppendParams": {
+      "description": "group.append (meta): add messages to one event, an existing one (event and its meta) or a new one (event empty, meta null: meta is always there) that may continue a done one. Answered with the event as a ConnectorInboxThing with id and meta.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "thread": {"type": "string"},
+        "event": {"type": "string"},
+        "meta": {},
+        "messages": {"type": "array", "items": {"type": "string"}},
+        "continues": {"type": "string"}
+      },
+      "required": ["contribution", "thread", "event", "meta", "messages"]
+    },
+    "ConnectorGroupFallbackParams": {
+      "description": "group.fallback: group a batch by structure, with the conversation's events.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "thread": {"type": "string"},
+        "batch": {"type": "string"},
+        "events": {"type": "array", "items": {"$ref": "#/$defs/ConnectorGroupEvent"}}
+      },
+      "required": ["contribution", "thread", "batch", "events"]
+    },
+    "ConnectorGroupEvent": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "meta": {},
+        "done": {"type": "boolean"}
+      },
+      "required": ["id", "meta", "done"]
+    },
+    "ConnectorGroupFallback": {
+      "description": "group.fallback's answer: each new message exactly once, in an open event given (assign) or a new one (new).",
+      "type": "object",
+      "properties": {
+        "assign": {"type": "array", "items": {"$ref": "#/$defs/ConnectorGroupAssign"}},
+        "new": {"type": "array", "items": {"$ref": "#/$defs/ConnectorGroupNew"}}
+      },
+      "required": ["assign", "new"]
+    },
+    "ConnectorGroupAssign": {
+      "type": "object",
+      "properties": {
+        "message": {"type": "string"},
+        "event": {"type": "string"}
+      },
+      "required": ["message", "event"]
+    },
+    "ConnectorGroupNew": {
+      "type": "object",
+      "properties": {
+        "key": {"type": "string"},
+        "messages": {"type": "array", "items": {"type": "string"}},
+        "rule_tier": {"type": "string"},
+        "title": {"type": "string"}
+      },
+      "required": ["key", "messages"]
+    },
+
+    "ConnectorChangesParams": {
+      "description": "archive.changes: the program's own cursor, kept and handed back as it is (empty the first time).",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "cursor": {"type": "string"},
+        "limit": {"type": "integer"}
+      },
+      "required": ["contribution"]
+    },
+    "ConnectorChangesResult": {
+      "description": "archive.changes' answer: what moved since the cursor, where to go on from, and whether another call has more now.",
+      "type": "object",
+      "properties": {
+        "batches": {"type": "array", "items": {"$ref": "#/$defs/ConnectorChatBatch"}},
+        "next": {"type": "string"},
+        "more": {"type": "boolean"}
+      }
+    },
+    "ConnectorChatBatch": {
+      "description": "One conversation's new messages, oldest first, archived as the chat <source>-<chat.id>: no source is the connector's id, else one of the manifest's archive_sources.",
+      "type": "object",
+      "properties": {
+        "source": {"type": "string"},
+        "chat": {"$ref": "#/$defs/ConnectorArchiveChat"},
+        "messages": {"type": "array", "items": {"$ref": "#/$defs/ConnectorArchiveMessage"}}
+      }
+    },
+    "ConnectorArchiveChat": {
+      "description": "A batch's conversation. The flags are what the owner set at the source (none: not set, or the program cannot tell); the knowledge base's selection matches its rules on them and on kind, and a flag a program never reports never matches its rule.",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "kind": {"type": "string", "description": "The selection's kind rules match dm, group, bot, official (an official or service account) and system (the service's own notices); a source may report other kinds (mail, issue, pr…), which match no kind rule."},
+        "topic": {"type": "boolean"},
+        "muted": {"type": "boolean", "description": "The owner muted it (a source's automatic muting of large groups included)."},
+        "collapsed": {"type": "boolean", "description": "The owner folded it away (a chat box, folded groups)."},
+        "done": {"type": "boolean", "description": "The owner marked it done."},
+        "updated_at": {"type": "string", "format": "date-time"}
+      },
+      "required": ["id", "name", "kind"]
+    },
+    "ConnectorArchiveMessage": {
+      "description": "One archived message. The archive only appends: a message without at, or without text and media, is dropped.",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "position": {"type": "string"},
+        "sender_id": {"type": "string"},
+        "sender_name": {"type": "string"},
+        "mine": {"type": "boolean"},
+        "mentioned": {"type": "boolean", "description": "The owner is mentioned by name in it (an @-mention of the owner, or the owner's display names): the program decides, on archive.changes batches and history pages alike. An @all alone is mentioned_all."},
+        "mentioned_all": {"type": "boolean", "description": "It mentions everyone in the chat (an @all / @everyone). Reported apart from mentioned: whether it counts as a mention is the knowledge base's selection (include_all)."},
+        "type": {"type": "string", "description": "TEXT, POST, IMAGE, FILE, CARD, SYSTEM…"},
+        "text": {"type": "string"},
+        "at": {"type": "string", "format": "date-time"},
+        "media": {"type": "array", "items": {"type": "string"}, "description": "Refs for archive.media."},
+        "sender_handles": {"type": "array", "items": {"$ref": "kb.schema.json#/$defs/KBHandle"}, "description": "Raw identity clues; the hub keeps only their HMAC."}
+      },
+      "required": ["id"]
+    },
+    "ConnectorHistoryChats": {
+      "description": "history.chats: the conversations the connector can import the history of. Read-only.",
+      "type": "object",
+      "properties": {
+        "chats": {"type": "array", "items": {"$ref": "#/$defs/ConnectorHistoryChat"}}
+      },
+      "required": ["chats"]
+    },
+    "ConnectorHistoryChat": {
+      "description": "One conversation to import: estimate is roughly how many messages it has (0 or none: unknown); source is the name it is filed under, as a batch's (none: the connector's id). id alone names it, unique across the connector's sources.",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "kind": {"type": "string", "enum": ["dm", "group", "bot", "official", "system"]},
+        "muted": {"type": "boolean", "description": "As an archive chat's muted, collapsed and done."},
+        "collapsed": {"type": "boolean"},
+        "done": {"type": "boolean"},
+        "bot": {"type": "boolean"},
+        "estimate": {"type": "integer", "minimum": 0},
+        "source": {"type": "string"}
+      },
+      "required": ["id", "name", "kind"]
+    },
+    "ConnectorHistoryParams": {
+      "description": "archive.history: one page of a conversation, older than before, newer than after, or around a position (at most one; none: the newest page). Positions and cursors are the program's own strings. limit is a hint (the hub sends at most 200; 0 or none: the program's default) and a program may answer more.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "chat": {"type": "string"},
+        "before": {"type": "string"},
+        "after": {"type": "string"},
+        "around": {"type": "string"},
+        "limit": {"type": "integer", "minimum": 0, "maximum": 200}
+      },
+      "required": ["contribution", "chat"]
+    },
+    "ConnectorHistoryPage": {
+      "description": "archive.history's answer, messages oldest first. older is the cursor to go further back and more says there is older history. Read in this order, since a paced or unreadable page is empty with more false too: pace asks the hub to wait or stop and never means the start; unreadable: the account can no longer read the conversation (left, dissolved, not found), permanent, with no messages, not an error; otherwise more false (or no messages) is the start of the conversation.",
+      "type": "object",
+      "properties": {
+        "messages": {"type": "array", "items": {"$ref": "#/$defs/ConnectorArchiveMessage"}},
+        "older": {"type": "string"},
+        "newer": {"type": "string"},
+        "more": {"type": "boolean"},
+        "unreadable": {"type": "boolean"},
+        "pace": {"$ref": "#/$defs/ConnectorPace"}
+      }
+    },
+    "ConnectorPace": {
+      "description": "How fast the program may be read: retry_after_ms is ask again no sooner (a rate limit), stop is wait for a person (an expired sign-in, a refusal); reason is for people and never a secret. The hub never sends a read that timed out again.",
+      "type": "object",
+      "properties": {
+        "retry_after_ms": {"type": "integer", "minimum": 0},
+        "stop": {"type": "boolean"},
+        "reason": {"type": "string"}
+      }
+    },
+    "ConnectorHistoryAnchorsParams": {
+      "description": "history.anchors: the messages the owner sent or was mentioned in between since and until, in one conversation (chat) or all of them (none); cursor is the next of the call before. limit is a hint, as archive.history's.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "chat": {"type": "string"},
+        "since": {"type": "string", "format": "date-time"},
+        "until": {"type": "string", "format": "date-time"},
+        "cursor": {"type": "string"},
+        "limit": {"type": "integer", "minimum": 0, "maximum": 200}
+      },
+      "required": ["contribution"]
+    },
+    "ConnectorHistoryAnchors": {
+      "description": "history.anchors' answer: next is the cursor for the next call, more says there are more.",
+      "type": "object",
+      "properties": {
+        "anchors": {"type": "array", "items": {"$ref": "#/$defs/ConnectorHistoryAnchor"}},
+        "next": {"type": "string"},
+        "more": {"type": "boolean"},
+        "pace": {"$ref": "#/$defs/ConnectorPace"}
+      }
+    },
+    "ConnectorHistoryAnchor": {
+      "description": "One message the owner sent (mine) or was mentioned in (mention), at position in chat: the hub reads the page around it. message is the hit itself, the only way to keep one from a conversation that is unreadable now; a search hit may have no sender_id. source is the name the conversation is filed under, as a chat's source (a conversation the account left is often missing from history.chats).",
+      "type": "object",
+      "properties": {
+        "chat": {"type": "string"},
+        "source": {"type": "string"},
+        "position": {"type": "string"},
+        "at": {"type": "string", "format": "date-time"},
+        "mine": {"type": "boolean"},
+        "mention": {"type": "boolean"},
+        "message": {"$ref": "#/$defs/ConnectorArchiveMessage"}
+      },
+      "required": ["chat", "position"]
+    },
+    "ConnectorItems": {
+      "description": "items.list: the knowledge base's documents, meetings and events.",
+      "type": "object",
+      "properties": {
+        "items": {"type": "array", "items": {"$ref": "#/$defs/ConnectorKBItem"}}
+      },
+      "required": ["items"]
+    },
+    "ConnectorKBItem": {
+      "description": "One knowledge-base item. The fields after where are the knowledge base's own (its tagging); a program leaves them out.",
+      "type": "object",
+      "properties": {
+        "kind": {"type": "string", "enum": ["docs", "meetings", "events"]},
+        "source": {"type": "string", "description": "The connector the item belongs to. A program may leave it out: the knowledge base sets it to the calling connector's id, whatever the program sends."},
+        "id": {"type": "string"},
+        "title": {"type": "string"},
+        "url": {"type": "string"},
+        "at": {"type": "string", "format": "date-time"},
+        "where": {"type": "string", "description": "Where it came from (a chat id, calendar…)."},
+        "projects": {"type": "array", "items": {"type": "string"}},
+        "note": {"type": "string"},
+        "seen": {"type": "string", "format": "date-time"},
+        "signals": {"type": "array", "items": {"type": "string", "enum": ["mentions", "comment_mentions", "authored", "viewed"]}, "uniqueItems": true, "description": "Why it concerns the owner, as far as the program can tell: mentions (the document mentions the owner), comment_mentions (a comment or reply on it does), authored (the owner owns it), viewed (the owner opened it recently). The knowledge base's selection keeps documents by them; leave out what the program cannot tell."},
+        "importance": {"type": "string"},
+        "relevance": {"type": "integer"},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "locked": {"type": "boolean"},
+        "tagged_at": {"type": "string", "format": "date-time"},
+        "pinned": {"type": "string"},
+        "locked_fields": {"type": "array", "items": {"type": "string"}},
+        "provenance": {"type": "object", "additionalProperties": {"$ref": "#/$defs/ConnectorKBProvenance"}, "description": "The store's: which extension holds a locked field. A connector's is ignored."}
+      },
+      "required": ["kind", "id", "title"]
+    },
+    "ConnectorKBProvenance": {
+      "description": "Who holds a locked field of a knowledge-base entity, and from what (kb.schema.json KBProvenance).",
+      "type": "object",
+      "properties": {
+        "by": {"type": "string"},
+        "at": {"type": "string", "format": "date-time"},
+        "evidence": {"type": "array", "items": {"$ref": "#/$defs/ConnectorKBEvidence"}}
+      },
+      "required": ["by", "at"]
+    },
+    "ConnectorKBEvidence": {
+      "type": "object",
+      "properties": {
+        "chat": {"type": "string"},
+        "day": {"type": "string"},
+        "n": {"type": "integer"},
+        "note": {"type": "string"}
+      },
+      "required": ["chat", "day"]
+    },
+    "ConnectorDocTitleParams": {
+      "description": "items.doc_title: the title of a document link in a chat.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "url": {"type": "string"}
+      },
+      "required": ["contribution", "url"]
+    },
+    "ConnectorDocTitle": {
+      "description": "items.doc_title's answer: empty when it cannot be read.",
+      "type": "object",
+      "properties": {
+        "title": {"type": "string"}
+      },
+      "required": ["title"]
+    },
+    "ConnectorSnapshotParams": {
+      "description": "snapshot.get: the user's time zone (none: the program's own). The hub waits at most 3 seconds.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "tz": {"type": "string"}
+      },
+      "required": ["contribution"]
+    },
+    "ConnectorSnapshot": {
+      "description": "snapshot.get's answer: the unread chats and the rest of today's meetings (not declined, by start); a part not known is left out.",
+      "type": "object",
+      "properties": {
+        "chats": {"$ref": "#/$defs/ConnectorSnapshotChats"},
+        "meetings": {"type": "array", "items": {"$ref": "#/$defs/ConnectorSnapshotMeeting"}}
+      }
+    },
+    "ConnectorSnapshotChats": {
+      "type": "object",
+      "properties": {
+        "at_me": {"type": "array", "items": {"$ref": "#/$defs/ConnectorSnapshotChat"}},
+        "other": {"type": "array", "items": {"$ref": "#/$defs/ConnectorSnapshotChat"}}
+      },
+      "required": ["at_me", "other"]
+    },
+    "ConnectorSnapshotChat": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "unread": {"type": "integer"},
+        "preview": {"type": "string", "description": "The newest text's start, for a chat that @ the user."}
+      },
+      "required": ["name", "unread"]
+    },
+    "ConnectorSnapshotMeeting": {
+      "type": "object",
+      "properties": {
+        "start": {"type": "string", "format": "date-time"},
+        "end": {"type": "string", "format": "date-time"},
+        "title": {"type": "string"}
+      },
+      "required": ["start", "end", "title"]
+    },
+
+    "ConnectorLoginParams": {
+      "description": "login.step: step empty starts over; values are the fields of the step before.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "step": {"type": "string"},
+        "values": {"type": "object", "additionalProperties": {"type": "string"}}
+      },
+      "required": ["contribution"]
+    },
+    "ConnectorPrompt": {
+      "description": "Where a sign-in stands: the next step to fill in, a code or QR code to wait on, or done. error is what was wrong with the values just given (the same step again).",
+      "type": "object",
+      "properties": {
+        "step": {"type": "string"},
+        "fields": {"type": "array", "items": {"$ref": "#/$defs/ConnectorField"}},
+        "kind": {"type": "string", "description": "ConnectorPromptKind, or empty for fields."},
+        "url": {"type": "string"},
+        "user_code": {"type": "string"},
+        "interval": {"type": "integer", "description": "Seconds between asks of a device_code or qr step."},
+        "qr": {"$ref": "#/$defs/ConnectorQRCode"},
+        "link": {"type": "string", "description": "An absolute URL where this step's action is completed; empty means no link."},
+        "link_text": {"type": "string", "description": "The label for the optional link."},
+        "hint": {"type": "string"},
+        "error": {"type": "string"},
+        "done": {"type": "boolean"},
+        "account": {"type": "string", "description": "Who is signed in, once done."}
+      }
+    },
+    "ConnectorField": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "label": {"type": "string"},
+        "secret": {"type": "boolean"},
+        "placeholder": {"type": "string"}
+      },
+      "required": ["name", "label"]
+    },
+    "ConnectorQRCode": {
+      "description": "A qr step's code, size rows of size 0 / 1: the hub fills it in on the way to the app; a program leaves it out.",
+      "type": "object",
+      "properties": {
+        "size": {"type": "integer"},
+        "rows": {"type": "array", "items": {"type": "string"}}
+      },
+      "required": ["size", "rows"]
+    },
+    "ConnectorOptions": {
+      "description": "options.get's answer: the connector's own settings the user changes in the app.",
+      "type": "object",
+      "properties": {
+        "options": {}
+      }
+    },
+    "ConnectorOptionsParams": {
+      "description": "options.set: the user changed them (an error refuses them), and after every start the ones accepted before.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "options": {}
+      },
+      "required": ["contribution", "options"]
+    },
+    "ConnectorMachineParams": {
+      "description": "machines.online: one of the user's computers just connected. The hub does not wait for the answer.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "machine": {"type": "string"}
+      },
+      "required": ["contribution", "machine"]
+    },
+    "ConnectorAuthSource": {
+      "description": "auth.set: where the sign-in comes from, as the user chose (after every start too; the program does not keep it).",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "source": {"type": "string"},
+        "machine": {"type": "string"},
+        "machine_name": {"type": "string"}
+      },
+      "required": ["contribution", "source"]
+    },
+    "ConnectorAuth": {
+      "description": "auth.get and auth.set's answer. scopes only when known (scopes_known).",
+      "type": "object",
+      "properties": {
+        "source": {"type": "string"},
+        "machine": {"type": "string"},
+        "scopes": {"type": "array", "items": {"type": "string"}},
+        "scopes_known": {"type": "boolean"}
+      },
+      "required": ["source", "scopes_known"]
+    },
+
+    "ConnectorSecret": {
+      "description": "connector.secrets.load's answer: the connector's own state (a session, a token), sealed in the hub's database. No data: nothing stored.",
+      "type": "object",
+      "properties": {
+        "data": {"type": "string", "description": "Base64."}
+      }
+    },
+    "ConnectorSecretSaveParams": {
+      "description": "connector.secrets.save: replaces what is stored.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "data": {"type": "string", "description": "Base64."}
+      },
+      "required": ["contribution"]
+    },
+    "ConnectorGhTokenParams": {
+      "description": "connector.credentials.gh_token: a computer's gh token, for an extension granted gh_login. Kept in memory only.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "machine": {"type": "string"},
+        "host": {"type": "string"}
+      },
+      "required": ["contribution", "machine"]
+    },
+    "ConnectorSentRecordParams": {
+      "description": "sent.record: the program of a connector that declares sends_as_user (manifest connectors[].sends_as_user) tells the hub about a message it sent in the user's name outside the hub's write gate, for the sent-as-user ledger (docs/extensions/connectors.md \"Sent as the user\"). Only a connector of the caller's own that declares it may: else permission_denied. The hub sets the row's origin (the extension; session_id and machine_id are kept beside it) and how it was let through (kind auto, with setting) itself. Errors: permission_denied, invalid_params, rate_limited (data {retry_after} in seconds: 60 calls at once per extension, then one a second, whether or not they were allowed), and no_database on a hub without a database; a ledger that cannot be written is an error with a message and no code. Recording is best effort: it never undoes the send.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "target": {"type": "object", "description": "Where it went: an object of short values (a chat, a thread, recipients…). Strings are cut to 200 characters; a value that is not a string, a number, a boolean or a list of up to 10 strings is dropped, and so is an empty string. The hub keeps 20 keys at most, in key order, each name cut to 64 characters. Anything but an object is invalid_params."},
+        "text": {"type": "string", "description": "What it said; may be empty, but it must be there (else invalid_params). The hub keeps the first 4000 characters."},
+        "summary": {"type": "string", "description": "One line saying what it was: the first line is kept, cut to 300 characters. Without it the hub makes one from the connector and the target."},
+        "session_id": {"type": "string", "description": "The Persona conversation that asked for the send, when one did. The extension's own word, which the hub cannot check; cut to 200 characters."},
+        "machine_id": {"type": "string", "description": "The computer that conversation ran on, when it names one. The extension's own word, which the hub cannot check; cut to 200 characters."},
+        "message_ref": {"type": "string", "description": "The sent message's id on the other side, when the service gave one. The hub trims it; one longer than 200 characters is dropped (the row has none), not cut."},
+        "setting": {"type": "string", "description": "The extension's setting (config key) that let it send without asking, when there is one; cut to 200 characters."}
+      },
+      "required": ["contribution", "target", "text"]
+    },
+    "ConnectorGhToken": {
+      "type": "object",
+      "properties": {
+        "token": {"type": "string"}
+      },
+      "required": ["token"]
+    },
+    "ConnectorPostsPutParams": {
+      "description": "connector.posts.put (archive): a feed's public posts into the knowledge base's post archive, at most 200 a call.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "posts": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/ConnectorPostPut"}}
+      },
+      "required": ["contribution", "posts"]
+    },
+    "ConnectorPostPut": {
+      "description": "A post, with its comments when they were read this time: no comments keeps the archived ones; an empty list is none.",
+      "type": "object",
+      "properties": {
+        "post": {"$ref": "#/$defs/ConnectorPost"},
+        "comments": {"type": "array", "maxItems": 5000, "items": {"$ref": "#/$defs/ConnectorPostComment"}, "x-go-pointer": true}
+      },
+      "required": ["post"]
+    },
+    "ConnectorPost": {
+      "description": "One public post. feed names the archive's heading; text over 64 KB is cut.",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "feed": {"type": "string"},
+        "author": {"type": "string"},
+        "author_id": {"type": "string"},
+        "anonymous": {"type": "boolean"},
+        "categories": {"type": "array", "items": {"type": "string"}},
+        "text": {"type": "string"},
+        "images": {"type": "integer"},
+        "reactions": {"type": "integer"},
+        "comment_count": {"type": "integer"},
+        "at": {"type": "string", "format": "date-time"},
+        "mine": {"type": "boolean"}
+      },
+      "required": ["id", "text", "comment_count", "at"]
+    },
+    "ConnectorPostComment": {
+      "description": "A comment as it is to be written: the connector names the user and hides who is anonymous.",
+      "type": "object",
+      "properties": {
+        "author": {"type": "string"},
+        "reply_to": {"type": "string"},
+        "text": {"type": "string"},
+        "at": {"type": "string", "format": "date-time"}
+      },
+      "required": ["text", "at"]
+    },
+    "ConnectorPostsPut": {
+      "description": "connector.posts.put's answer: ConnectorPostStatus (or empty) for each post, in order.",
+      "type": "object",
+      "properties": {
+        "statuses": {"type": "array", "items": {"type": "string"}}
+      },
+      "required": ["statuses"]
+    },
+    "ConnectorPostsCommentsParams": {
+      "description": "connector.posts.comments: replace one of its archived posts' comments, read when it had comment_count.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "id": {"type": "string"},
+        "comment_count": {"type": "integer"},
+        "comments": {"type": "array", "maxItems": 5000, "items": {"$ref": "#/$defs/ConnectorPostComment"}}
+      },
+      "required": ["contribution", "id", "comment_count", "comments"]
+    },
+    "ConnectorPostsPendingParams": {
+      "description": "connector.posts.pending: the posts whose comments to read again.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "limit": {"type": "integer", "minimum": 0, "maximum": 500}
+      },
+      "required": ["contribution"]
+    },
+    "ConnectorPostsPending": {
+      "description": "Newest first, at most 500.",
+      "type": "object",
+      "properties": {
+        "posts": {"type": "array", "items": {"$ref": "#/$defs/ConnectorPendingPost"}}
+      },
+      "required": ["posts"]
+    },
+    "ConnectorPendingPost": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "comment_count": {"type": "integer"},
+        "at": {"type": "string", "format": "date-time"}
+      },
+      "required": ["id", "comment_count", "at"]
+    },
+    "ConnectorArchiveChatsParams": {
+      "description": "connector.archive.chats: the chats archived under one of its sources (none: its id), to go on from where they are.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "source": {"type": "string"}
+      },
+      "required": ["contribution"]
+    },
+    "ConnectorArchivedChats": {
+      "type": "object",
+      "properties": {
+        "chats": {"type": "array", "items": {"$ref": "#/$defs/ConnectorArchivedChat"}}
+      },
+      "required": ["chats"]
+    },
+    "ConnectorArchivedChat": {
+      "description": "A chat's id at the source, and how far it was archived.",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "cursor": {"type": "string"},
+        "last_at": {"type": "string", "format": "date-time"},
+        "messages": {"type": "integer"}
+      },
+      "required": ["id", "messages"]
+    },
+    "ConnectorChangedEvent": {
+      "description": "The event connector.changed: chats, items or the inbox changed; the hub reads them soon.",
+      "type": "object",
+      "properties": {
+        "contribution": {"type": "string"},
+        "scope": {"$ref": "#/$defs/ConnectorScope"}
+      },
+      "required": ["contribution", "scope"]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "history_hint": "↑↓ browse sent messages · Ctrl+R search",
+  "history_hint_edit": "↑ edit last message · ↑↓ browse sent messages · Ctrl+R search",
+  "history_placeholder": "Search sent messages",
+  "history_list": "Sent messages",
+  "history_empty": "No matching messages",
+  "history_footer": "↑↓ select · Enter fill in · Esc close",
+  "locked": "This launcher fixes its own model, so a choice here won't take effect.",
+  "busy": "The agent is working. Switch the model after this turn ends",
+  "forget_failed": "Couldn't forget “{id}”: {error}"
+}

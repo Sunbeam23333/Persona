@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Persona · Unified entry prototype</title>
+<style>
+:root{
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+}
+[data-theme=light]{
+  --page:#eceef2; --page-ink:#1d1d1f; --page-sub:#5f6168; --page-card:#ffffff; --page-line:#dcdfe5;
+  --bg:#ffffff; --ink:#111113; --sub:#6c6c72; --faint:#a1a1a8; --line:rgba(0,0,0,.08);
+  --card:#f3f3f6; --card2:#ffffff; --raise:0 1px 2px rgba(0,0,0,.05), 0 6px 20px rgba(0,0,0,.06);
+  --bubble:#ececf0; --accent:#5856d6; --accent-soft:rgba(88,86,214,.12);
+  --orange:#f28a00; --orange-soft:rgba(255,149,0,.14); --green:#2fb350; --green-soft:rgba(52,199,89,.14);
+  --blue:#2f7bf6; --red:#ff3b30; --glass:rgba(255,255,255,.78); --fog:linear-gradient(#fff 55%, rgba(255,255,255,0));
+  --dim:rgba(0,0,0,.18);
+}
+[data-theme=dark]{
+  --page:#0d0e11; --page-ink:#f2f2f4; --page-sub:#9a9ca4; --page-card:#17181c; --page-line:#2a2c32;
+  --bg:#000000; --ink:#f4f4f6; --sub:#9a9aa2; --faint:#5e5e66; --line:rgba(255,255,255,.1);
+  --card:#1c1c1f; --card2:#232327; --raise:0 0 0 1px rgba(255,255,255,.06);
+  --bubble:#2a2a2e; --accent:#8e8cff; --accent-soft:rgba(142,140,255,.16);
+  --orange:#ff9f0a; --orange-soft:rgba(255,159,10,.17); --green:#30d158; --green-soft:rgba(48,209,88,.16);
+  --blue:#4c8dff; --red:#ff453a; --glass:rgba(28,28,31,.8); --fog:linear-gradient(#000 55%, rgba(0,0,0,0));
+  --dim:rgba(0,0,0,.45);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--page);color:var(--page-ink);font-family:var(--font);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.ic{width:1em;height:1em;flex:none;display:inline-block;vertical-align:-.14em}
+
+/* ---------- page layout ---------- */
+.wrap{max-width:1320px;margin:0 auto;padding:28px 32px 80px;display:grid;grid-template-columns:430px 1fr;gap:48px}
+.left{position:sticky;top:16px;align-self:start}
+.right{min-width:0}
+.hero{margin-bottom:28px}
+.hero h1{font-size:28px;letter-spacing:-.02em}
+.hero p{color:var(--page-sub);margin-top:8px;font-size:15px;line-height:1.65;max-width:860px}
+.hero .tools{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap}
+.pbtn{padding:7px 14px;border-radius:999px;background:var(--page-card);border:1px solid var(--page-line);font-size:13px;white-space:nowrap}
+.pbtn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.pbtn:disabled{opacity:.4;cursor:default}
+
+/* ---------- phone ---------- */
+.phone{width:410px;height:870px;border-radius:62px;padding:10px;background:#111;box-shadow:0 0 0 2px #2b2b2e, 0 30px 80px rgba(0,0,0,.25);margin:0 auto;position:relative}
+.screen{width:100%;height:100%;border-radius:52px;background:var(--bg);color:var(--ink);overflow:hidden;position:relative;display:flex;flex-direction:column;font-size:15px}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:120px;height:34px;border-radius:20px;background:#000;z-index:50}
+.status{height:52px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:6px 34px 0 40px;font-weight:600;font-size:15px;z-index:20;position:relative}
+.status .r{display:flex;gap:6px;align-items:center;font-size:12px}
+.batt{width:24px;height:12px;border:1.5px solid currentColor;border-radius:4px;position:relative;opacity:.9}
+.batt::after{content:"";position:absolute;inset:1.5px;right:6px;background:currentColor;border-radius:1.5px}
+
+.topbar{flex:none;display:flex;align-items:center;gap:10px;padding:4px 14px 8px;position:relative;z-index:20}
+.circle{width:38px;height:38px;border-radius:50%;background:var(--card);display:grid;place-items:center;font-size:18px;position:relative}
+.avatar{width:38px;height:38px;border-radius:50%;background:conic-gradient(from 200deg,#7b6cff,#4fb3ff,#7bffcb,#7b6cff);position:relative;flex:none}
+.avatar::after{content:"";position:absolute;inset:3px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff 0 9%,transparent 10%),radial-gradient(circle at 65% 30%,#fff 0 9%,transparent 10%),linear-gradient(160deg,#8a7dff,#5aa7ff)}
+.avatar.sm{width:24px;height:24px}
+.avatar.sm::after{inset:2px}
+.tb-mid{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center}
+.switch{display:flex;background:var(--card);border-radius:999px;padding:3px}
+.switch button{padding:6px 16px;border-radius:999px;font-size:14px;font-weight:600;color:var(--sub);white-space:nowrap}
+.switch button.on{background:var(--card2);color:var(--ink);box-shadow:var(--raise)}
+[data-theme=dark] .switch button.on{background:#3a3a3e}
+.tb-sub{margin-top:3px}
+.agents{position:absolute;inset:0;top:100px;background:var(--bg);z-index:15;display:none;padding:30px 28px;text-align:center;color:var(--sub);font-size:14px;line-height:1.7}
+.agents.on{display:block}
+.agents b{display:block;color:var(--ink);font-size:17px;margin-bottom:8px}
+.tb-name{font-weight:650;font-size:16px}
+.tb-sub{font-size:12px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:5px}
+.tb-sub .o{color:var(--orange);font-weight:600}
+.badge{position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--orange);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center}
+
+.stream{flex:1;overflow-y:auto;padding:6px 16px 18px;scrollbar-width:none}
+.stream::-webkit-scrollbar{display:none}
+.it{margin-top:14px;animation:rise .35s ease both}
+.it.old{animation:none}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.day{text-align:center;font-size:12px;color:var(--faint);margin-top:6px}
+.user{display:flex;flex-direction:column;align-items:flex-end}
+.user .b{background:var(--bubble);padding:9px 13px;border-radius:20px;max-width:82%;line-height:1.45}
+.to{font-size:11.5px;color:var(--accent);margin-bottom:4px;display:flex;align-items:center;gap:4px;font-weight:550}
+.ai{display:flex;gap:9px;line-height:1.55}
+.ai .t{flex:1;min-width:0}
+.ai .t b{font-weight:600}
+.meta{font-size:11.5px;color:var(--faint);margin-top:4px}
+
+/* cards */
+.card{background:var(--card);border-radius:18px;padding:12px 14px}
+.card-h{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--sub);font-weight:550;margin-bottom:8px}
+.card-h .ic{font-size:15px}
+.row{display:flex;align-items:center;gap:10px;padding:7px 0}
+.row + .row{border-top:1px solid var(--line)}
+.row .ri{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;font-size:15px;flex:none}
+.row .rt{flex:1;min-width:0;font-size:14px;line-height:1.35}
+.row .rs{font-size:12px;color:var(--sub)}
+.mini{font-size:12.5px;padding:5px 10px;border-radius:999px;background:var(--card2);box-shadow:var(--raise);white-space:nowrap;font-weight:550}
+[data-theme=dark] .mini{background:#2c2c30}
+.btns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.btn{padding:8px 14px;border-radius:12px;font-size:14px;font-weight:600;white-space:nowrap;background:var(--card2);box-shadow:var(--raise)}
+[data-theme=dark] .btn{background:#2c2c30}
+.btn.pri{background:var(--accent);color:#fff;box-shadow:none}
+.btn.warn{background:var(--orange);color:#fff;box-shadow:none}
+.btn.ghost{background:transparent;box-shadow:none;color:var(--sub)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:999px;background:var(--card2);font-size:12px;white-space:nowrap;box-shadow:var(--raise)}
+[data-theme=dark] .chip{background:#2c2c30}
+.chip .ic{font-size:12px;color:var(--sub)}
+.chip.edit::after{content:"⌄";color:var(--faint);margin-left:1px;font-size:11px}
+.why{font-size:12px;color:var(--sub);margin-top:6px;line-height:1.45}
+.ptask{padding:10px 0}
+.ptask + .ptask{border-top:1px solid var(--line)}
+.ptask .pt{font-weight:600;font-size:14.5px;display:flex;gap:7px;align-items:center}
+.num{width:18px;height:18px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:700;display:grid;place-items:center;flex:none}
+
+/* status marks */
+.st{width:16px;height:16px;border-radius:50%;flex:none;position:relative;display:inline-block}
+.st.working{border:2px solid var(--accent-soft);border-top-color:var(--accent);animation:spin 1s linear infinite}
+.st.needs{background:var(--orange)}
+.st.needs::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--orange);opacity:.5;animation:pulse 1.4s ease-out infinite}
+.st.done{background:var(--green);display:grid;place-items:center;color:#fff}
+.st.done::after{content:"";width:6px;height:3.5px;border-left:2px solid #fff;border-bottom:2px solid #fff;transform:rotate(-45deg) translate(1px,-1px)}
+.st.planned{border:2px dashed var(--faint)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{from{transform:scale(.7);opacity:.7}to{transform:scale(1.5);opacity:0}}
+
+.task{background:var(--card);border-radius:18px;padding:12px 14px;cursor:pointer;transition:background .2s}
+.task.needs{box-shadow:inset 0 0 0 1.5px var(--orange)}
+.task .th{display:flex;align-items:center;gap:8px}
+.task .tt{flex:1;font-weight:600;font-size:14.5px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.task .te{font-size:12px;color:var(--faint)}
+.task .tw{font-size:12px;color:var(--sub);margin-top:3px;padding-left:24px}
+.task .tl{margin-top:8px;margin-left:24px;font-size:13px;color:var(--ink);background:var(--card2);border-radius:10px;padding:7px 10px;display:flex;gap:7px;align-items:flex-start;line-height:1.4}
+[data-theme=dark] .task .tl{background:#26262a}
+.task .tl .ic{color:var(--sub);margin-top:2px}
+.task .tl.ok{color:var(--green)}
+.task .tl.wait{color:var(--orange)}
+.task .tf{display:flex;gap:12px;margin:9px 0 0 24px;font-size:12.5px;color:var(--sub)}
+.task .tf button{color:var(--accent);font-weight:600;font-size:12.5px;white-space:nowrap}
+.steps{display:flex;gap:3px;margin:9px 0 0 24px}
+.steps i{height:3px;flex:1;border-radius:2px;background:var(--line)}
+.steps i.on{background:var(--accent)}
+.task.done .steps i.on{background:var(--green)}
+.livedots::after{content:"";animation:dots 1.4s steps(4) infinite}
+@keyframes dots{0%{content:""}25%{content:"·"}50%{content:"··"}75%{content:"···"}}
+.auto{font-size:11px;padding:2px 6px;border-radius:6px;background:var(--accent-soft);color:var(--accent);font-weight:600;white-space:nowrap}
+
+.ask{background:var(--orange-soft);border-radius:18px;padding:12px 14px;position:relative}
+.ask .from{font-size:12px;color:var(--orange);font-weight:650;display:flex;gap:6px;align-items:center}
+.ask .q{font-size:14.5px;margin-top:6px;line-height:1.45;font-weight:550}
+.code{font-family:var(--mono);font-size:12px;background:var(--card2);border-radius:9px;padding:8px 10px;margin-top:8px;overflow-x:auto;white-space:nowrap}
+[data-theme=dark] .code{background:#1a1a1d}
+.opt{display:block;width:100%;text-align:left;background:var(--card2);border-radius:12px;padding:9px 12px;margin-top:7px;font-size:13.5px;line-height:1.4;box-shadow:var(--raise)}
+[data-theme=dark] .opt{background:#2c2c30}
+.opt b{color:var(--accent);margin-right:6px}
+.ask.answered{background:var(--card);padding:9px 14px}
+.ask.answered .from{color:var(--sub)}
+.flash{animation:flash 1s ease 2}
+@keyframes flash{50%{box-shadow:0 0 0 3px var(--orange)}}
+
+.inbox .src{display:flex;align-items:center;gap:8px;font-size:13px}
+.lark{width:22px;height:22px;border-radius:7px;background:linear-gradient(135deg,#3370ff,#00d6b9);display:grid;place-items:center;color:#fff;font-size:12px;flex:none}
+.quote{margin-top:8px;padding:8px 11px;border-left:3px solid var(--blue);background:var(--card2);border-radius:4px 10px 10px 4px;font-size:14px;line-height:1.45}
+[data-theme=dark] .quote{background:#26262a}
+.link{display:flex;align-items:center;gap:8px;margin-top:9px;font-size:12.5px;color:var(--sub);background:var(--card2);padding:7px 10px;border-radius:10px}
+[data-theme=dark] .link{background:#26262a}
+.draft{margin-top:9px;font-size:14px;padding:9px 12px;border-radius:14px;background:var(--accent-soft);line-height:1.45}
+.draft small{display:block;color:var(--accent);font-size:11.5px;font-weight:600;margin-bottom:3px}
+
+.echo{display:flex;gap:10px;align-items:flex-start;padding:11px 13px;border-radius:16px;background:var(--green-soft)}
+.echo .et{flex:1;font-size:14px;line-height:1.45}
+.echo .et b{font-weight:650}
+.echo .es{font-size:12.5px;color:var(--sub);margin-top:2px}
+.quick{display:flex;gap:10px;align-items:center;padding:10px 13px;border-radius:16px;background:var(--card)}
+.quick .ri{width:30px;height:30px;border-radius:9px;background:var(--orange-soft);color:var(--orange);display:grid;place-items:center;font-size:16px}
+.quick .qt{flex:1;font-size:14px;line-height:1.35}
+.quick .qt small{display:block;font-size:12px;color:var(--sub)}
+
+/* dock + composer */
+.bottom{flex:none;position:relative;z-index:20;padding:0 0 26px;background:var(--bg)}
+.bottom::before{content:"";position:absolute;left:0;right:0;top:-22px;height:22px;background:linear-gradient(transparent,var(--bg));pointer-events:none}
+.dock{display:flex;gap:7px;overflow-x:auto;padding:4px 14px 8px;scrollbar-width:none}
+.dock::-webkit-scrollbar{display:none}
+.pill{display:flex;align-items:center;gap:7px;padding:7px 11px 7px 9px;border-radius:999px;background:var(--card);font-size:13px;white-space:nowrap;flex:none;font-weight:550;transition:background .25s}
+.pill.needs{background:var(--orange-soft);color:var(--orange)}
+.pill.done{color:var(--sub)}
+.pill .st{width:14px;height:14px}
+.pill.all{color:var(--sub);gap:5px}
+.route{display:flex;align-items:center;gap:6px;margin:0 16px 6px;font-size:12.5px}
+.route .rc{display:inline-flex;gap:5px;align-items:center;padding:4px 6px 4px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-weight:600}
+.route .rc.auto{padding-right:10px;background:var(--card);color:var(--sub);font-weight:500}
+.route .rc button{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;font-size:11px}
+.composer{margin:0 12px;display:flex;align-items:flex-end;gap:8px;background:var(--card);border-radius:24px;padding:6px 6px 6px 8px}
+.composer .cb{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:19px;color:var(--sub);flex:none}
+.composer textarea{flex:1;border:0;outline:0;background:none;resize:none;font:inherit;color:var(--ink);padding:7px 2px;height:34px;max-height:90px;line-height:20px}
+.composer textarea::placeholder{color:var(--faint)}
+.send{width:34px;height:34px;border-radius:50%;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-size:17px;flex:none}
+.home{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--ink);opacity:.85;z-index:40}
+
+.mention{position:absolute;left:12px;right:12px;bottom:100%;margin-bottom:6px;background:var(--glass);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.18), 0 0 0 1px var(--line);padding:6px;z-index:30;animation:rise .2s ease}
+.mention h6{font-size:11.5px;color:var(--faint);font-weight:600;padding:6px 10px 2px}
+.mention button{display:flex;width:100%;align-items:center;gap:9px;padding:8px 10px;border-radius:12px;font-size:14px;text-align:left}
+.mention button:hover{background:var(--card)}
+.mention button small{color:var(--sub);font-size:12px;margin-left:auto}
+
+/* sheets */
+.scrim{position:absolute;inset:0;background:var(--dim);z-index:60;opacity:0;pointer-events:none;transition:opacity .3s}
+.scrim.on{opacity:1;pointer-events:auto}
+.scrim.mid{background:transparent;pointer-events:none}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:61;background:var(--bg);border-radius:30px 30px 0 0;box-shadow:0 -10px 50px rgba(0,0,0,.22), 0 0 0 1px var(--line);transform:translateY(100%);transition:transform .38s cubic-bezier(.2,.9,.25,1), height .38s cubic-bezier(.2,.9,.25,1);display:flex;flex-direction:column;height:93%}
+.sheet.on{transform:none}
+.sheet.mid{height:60%}
+.grab{flex:none;padding:8px 0 4px;display:grid;place-items:center;cursor:pointer}
+.grab i{width:38px;height:5px;border-radius:3px;background:var(--faint);opacity:.6}
+.sh-h{flex:none;padding:6px 18px 10px;display:flex;align-items:flex-start;gap:10px}
+.sh-h .tt{font-size:18px;font-weight:700;line-height:1.3}
+.sh-body{flex:1;overflow-y:auto;padding:0 18px 18px;scrollbar-width:none}
+.sh-body::-webkit-scrollbar{display:none}
+.seg{display:flex;background:var(--card);border-radius:11px;padding:3px;margin:0 18px 10px;flex:none}
+.seg button{flex:1;padding:6px 0;border-radius:9px;font-size:13px;font-weight:600;color:var(--sub)}
+.seg button.on{background:var(--card2);color:var(--ink);box-shadow:var(--raise)}
+[data-theme=dark] .seg button.on{background:#3a3a3e}
+.log{position:relative;padding-left:24px}
+.log::before{content:"";position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:var(--line)}
+.lg{position:relative;padding:7px 0;font-size:14px;line-height:1.45}
+.lg::before{content:"";position:absolute;left:-18px;top:13px;width:10px;height:10px;border-radius:50%;background:var(--bg);border:2px solid var(--faint)}
+.lg.ok::before{border-color:var(--green);background:var(--green)}
+.lg.you::before{border-color:var(--orange);background:var(--orange)}
+.lg small{display:block;font-size:11.5px;color:var(--faint)}
+.lg.you{color:var(--orange)}
+.sec{font-size:12.5px;color:var(--sub);font-weight:650;margin:16px 0 6px;display:flex;justify-content:space-between}
+.brow{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--card);border-radius:14px;margin-top:6px;font-size:14px;cursor:pointer}
+.brow .bt{flex:1;min-width:0}
+.brow .bt small{display:block;color:var(--sub);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brow .chev{color:var(--faint)}
+.sh-foot{flex:none;padding:8px 12px 28px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.sh-foot .composer{flex:1;margin:0}
+.diff{font-family:var(--mono);font-size:12px;border-radius:12px;overflow:hidden;background:var(--card);margin-top:8px}
+.diff div{padding:2px 10px;white-space:pre}
+.diff .a{background:var(--green-soft)} .diff .d{background:rgba(255,59,48,.12)}
+.diff .f{padding:7px 10px;font-weight:600;font-family:var(--font);font-size:12.5px;border-bottom:1px solid var(--line)}
+
+/* ---------- doc ---------- */
+.doc{min-width:0}
+.doc h2{font-size:20px;margin:36px 0 12px;letter-spacing:-.01em}
+.doc h2:first-child{margin-top:0}
+.layers{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.layer{background:var(--page-card);border:1px solid var(--page-line);border-radius:16px;padding:14px 16px}
+.layer h3{font-size:15px;margin-bottom:6px;display:flex;gap:8px;align-items:center}
+.layer p{font-size:13.5px;color:var(--page-sub);line-height:1.6}
+.stepdoc{border:1px solid var(--page-line);background:var(--page-card);border-radius:16px;padding:14px 18px;margin-top:10px;cursor:pointer;transition:border-color .2s, box-shadow .2s}
+.stepdoc:hover{border-color:var(--accent)}
+.stepdoc.on{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.stepdoc h3{font-size:15.5px;display:flex;gap:10px;align-items:baseline}
+.stepdoc h3 span{font-size:12px;color:var(--accent);font-weight:700;min-width:22px}
+.stepdoc p{font-size:13.5px;color:var(--page-sub);line-height:1.7;margin-top:6px}
+.stepdoc p b{color:var(--page-ink);font-weight:600}
+.stepdoc .hint{font-size:12px;color:var(--accent);margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--page-card);border-radius:14px;overflow:hidden;border:1px solid var(--page-line)}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--page-line);vertical-align:top;line-height:1.6}
+th{font-size:12.5px;color:var(--page-sub);font-weight:650}
+tr:last-child td{border-bottom:0}
+td code,p code{font-family:var(--mono);font-size:12px;background:var(--accent-soft);padding:1px 5px;border-radius:5px}
+.qa{background:var(--page-card);border:1px solid var(--page-line);border-radius:16px;padding:14px 18px;margin-top:10px}
+.qa h3{font-size:15px}
+.qa p{font-size:13.5px;color:var(--page-sub);line-height:1.7;margin-top:6px}
+.qa p b{color:var(--page-ink)}
+.ctl{display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+.stepname{text-align:center;margin-top:10px;font-size:13px;color:var(--page-sub);min-height:20px}
+
+@media (max-width:1000px){
+  .wrap{grid-template-columns:1fr;padding:20px 16px 60px}
+  .left{position:static}
+  .layers{grid-template-columns:1fr}
+}
+@media (max-width:480px){
+  .wrap{padding:0 0 40px;gap:24px}
+  .hero{padding:16px 16px 0}
+  .phone{width:100vw;height:calc(100svh - 20px);border-radius:0;padding:0;box-shadow:none;background:none}
+  .screen{border-radius:0}
+  .island{display:none}
+  .doc{padding:0 16px}
+}
+</style>
+</head>
+<body data-theme="light">
+<div class="wrap">
+  <div class="left">
+    <div class="phone"><div class="screen" id="screen">
+      <div class="island"></div>
+      <div class="status"><span id="clock">9:12</span><span class="r">●●●● <span class="batt"></span></span></div>
+      <div class="topbar">
+        <button class="avatar" title="Chat history / Sidebar"></button>
+        <div class="tb-mid"><div class="switch"><button class="on" id="swA">Assistant</button><button id="swB">Agents</button></div><div class="tb-sub" id="tbSub"></div></div>
+        <button class="circle" title="New chat"><span id="newIc"></span></button>
+      </div>
+      <div class="stream" id="stream"></div>
+      <div class="agents" id="agentsPage"><b>Agents</b>The existing Agents page stays unchanged.<br>Tasks opened from the main chat are ordinary Agent sessions.<br>They appear here as usual; both views share the same data.<br><br><button class="btn" onclick="showAgents(false)">Back to assistant</button></div>
+      <div class="bottom" id="bottom">
+        <div id="mention"></div>
+        <div class="dock" id="dock"></div>
+        <div id="route"></div>
+        <div class="composer">
+          <button class="cb" id="plusIc"></button>
+          <textarea id="input" rows="1" placeholder="Say something, or @ a task"></textarea>
+          <button class="send" id="sendBtn"></button>
+        </div>
+      </div>
+      <div class="home"></div>
+      <div class="scrim" id="scrim"></div>
+      <div class="sheet" id="sheet"></div>
+    </div></div>
+    <div class="stepname" id="stepName"></div>
+    <div class="ctl">
+      <button class="pbtn" id="prevBtn">Previous</button>
+      <button class="pbtn primary" id="nextBtn">Next</button>
+    </div>
+  </div>
+
+  <div class="right">
+  <div class="hero">
+    <h1>Persona · Unified entry</h1>
+    <p>The Agents page stays as it is. Alongside it, the main chat can handle everything: tell the assistant what you want without first picking a project, computer, model, and session in Agents. Persona breaks your request into tasks, assigns suitable Agents, watches them, and interrupts only when it needs you. The phone on the left is interactive (buttons, input, <b>@</b>, dock pills, and “All” at the dock’s right edge). Click “Next” to follow the script, or any section on the right to jump there.</p>
+    <div class="tools">
+      <button class="pbtn" id="themeBtn">Toggle dark / light</button>
+      <button class="pbtn" id="autoBtn">Autoplay</button>
+      <button class="pbtn" id="resetBtn">Start over</button>
+    </div>
+  </div>
+
+  <div class="doc" id="doc"></div>
+  </div>
+</div>
+
+<script>
+/* ---------------- icons ---------------- */
+const P = {
+  check:'<path d="M20 6 9 17l-5-5"/>', x:'<path d="M18 6 6 18M6 6l12 12"/>', plus:'<path d="M12 5v14M5 12h14"/>',
+  up:'<path d="m5 12 7-7 7 7M12 19V5"/>', chev:'<path d="m9 18 6-6-6-6"/>',
+  laptop:'<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/>',
+  server:'<rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01"/>',
+  cal:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  mail:'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/>',
+  mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/>',
+  term:'<path d="m4 17 6-6-6-6M12 19h8"/>', at:'<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',
+  grid:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
+  bubble:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  bell:'<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  alert:'<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+  pr:'<circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v12M13 6h3a2 2 0 0 1 2 2v7"/>',
+  file:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+  stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>', clock:'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>', cpu:'<rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9zM9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/>',
+  folder:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  hand:'<path d="M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>',
+  reply:'<path d="M9 17 4 12l5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>', link:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  repeat:'<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+  phone:'<rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/>',
+};
+const ic = (n, s='') => `<svg class="ic" ${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg>`;
+const st = s => `<span class="st ${s}"></span>`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------------- state ---------------- */
+let S;
+function fresh(){
+  S = { items:[], tasks:{}, order:[], route:null, sheet:null, seg:'Process', clock:'9:12', step:-1, nid:1, seen:new Set(), mention:false };
+}
+const TASKS = {
+  t0:{ title:'Archive yesterday’s 4 meeting notes', short:'Archive notes', where:['hub','Knowledge','Persona'], icon:'server' },
+  t1:{ title:'Fix login crash in iPad landscape', short:'Login crash', where:['Work Mac','persona','Claude Opus 5.5'], icon:'laptop', total:6 },
+  t2:{ title:'Address review feedback on PR #842', short:'#842 review', where:['Work Mac','persona','Codex'], icon:'laptop', total:5 },
+  t3:{ title:'Prepare material for the 15:00 design review', short:'Review material', where:['hub','Knowledge + Lark docs','Persona'], icon:'server', total:3, auto:'Auto-start · Read only' },
+};
+function addTask(id, status='working'){
+  const d = TASKS[id];
+  S.tasks[id] = { id, ...d, status, log:[], live:'', done:0, pending:[], elapsed:'Just started' };
+  S.order.push(id);
+}
+function prog(id, text, opt={}){ // push a progress line
+  const t = S.tasks[id];
+  t.log.push({ text, time:S.clock, kind:opt.kind||'' });
+  if(!opt.noStep) t.done = Math.min((t.total||5), t.done+1);
+  t.live = text;
+  if(opt.elapsed) t.elapsed = opt.elapsed;
+}
+const add = it => { it.key = 'k'+(S.nid++); S.items.push(it); return it; };
+const find = id => S.items.find(i => i.id === id);
+
+/* ---------------- scenario ---------------- */
+const STEPS = [
+ { name:'Morning: Persona speaks first', apply(){
+    S.clock='9:12';
+    add({k:'day', text:'Today · Monday, November 3'});
+    addTask('t0','done'); S.tasks.t0.elapsed='Finished at 2:10 overnight'; S.tasks.t0.seenDone=true;
+    add({k:'brief'});
+ }},
+ { name:'State intent, not project choices', apply(){
+    S.clock='9:14';
+    add({k:'user', text:'The login page crashes in iPad landscape. Please fix it, and address the review feedback on #842 too'});
+    add({k:'plan', id:'p1', tasks:['t1','t2'], state:'open'});
+ }},
+ { name:'Tasks start: live cards, overview in the dock', trigger:'start:p1', apply(){
+    startPlan('p1');
+ }},
+ { name:'Keep talking: instant actions / auto-start', apply(){
+    S.clock='9:20';
+    prog('t1','Reproduced in iPad simulator: rotation makes sheet height 0',{elapsed:'6 min'});
+    prog('t2','6 comments; comments 1 and 2 addressed',{elapsed:'6 min'});
+    add({k:'user', text:'Remind me to call my parents Saturday morning. Also prepare the material for this afternoon’s review'});
+    add({k:'quick', id:'r1', text:'Reminder added', sub:'Saturday 10:00 · Call parents', icon:'bell'});
+    add({k:'ai', html:'I’ll prepare the review material. It’s read-only, so I started directly.'});
+    addTask('t3'); prog('t3','Searched Knowledge for “design review”; found 3 documents',{elapsed:'Just started'});
+    add({k:'task', tid:'t3'});
+ }},
+ { name:'Needs you: questions at the bottom, answer in place', apply(){
+    S.clock='9:31';
+    prog('t1','Changed LoginView.swift: fall back to container height on rotation',{elapsed:'17 min'});
+    prog('t2','Comment 3: should loadSession become async?',{noStep:true, elapsed:'17 min'});
+    prog('t3','Read 3 documents; organizing key points',{elapsed:'11 min'});
+    S.tasks.t1.status='needs'; S.tasks.t1.live='Wants to run a command; awaiting approval';
+    add({k:'ask', id:'a1', tid:'t1', type:'approve', q:'Run the tests in the iPad simulator?', code:"xcodebuild test -scheme Persona -destination 'iPad Air'"});
+ }},
+ { name:'Several tasks need you: answer one, then the next', trigger:'answer:a1', apply(){
+    S.clock='9:33';
+    answer('a1','Approved · Similar commands allowed for this task');
+    S.tasks.t1.status='working'; prog('t1','Running 42 tests',{elapsed:'19 min'});
+    S.tasks.t3.status='done'; prog('t3','Produced 1 page of key points + 3 links',{elapsed:'13 min'});
+    add({k:'echo', tid:'t3', text:'<b>Review material ready</b>', sub:'1 page · 3 source documents · 2 open decisions', acts:['Open','Send to meeting group']});
+    S.tasks.t2.status='needs'; S.tasks.t2.live='Needs your choice on an approach';
+    add({k:'ask', id:'a2', tid:'t2', type:'question', q:'Comment 3 suggests making loadSession async. Which approach?',
+      opts:[['A','Wrap callers in Task (2 files)'],['B','Make all calls async (8 files; cleaner)'],['C','Keep it; explain in a reply']]});
+ }},
+ { name:'Information and tasks recognize each other', trigger:'answer:a2', apply(){
+    S.clock='9:40';
+    answer('a2','Chose B · Make the whole chain async');
+    S.tasks.t2.status='working'; prog('t2','Made loadSession and 5 callers async',{elapsed:'26 min'});
+    prog('t1','Tests passed: 42 / 42',{elapsed:'26 min', kind:'ok'});
+    add({k:'inbox', id:'m1', state:'open'});
+ }},
+ { name:'Completion receipt: what changed, what next', trigger:'send:m1', apply(){
+    S.clock='9:52';
+    const m = find('m1'); m.state='sent';
+    S.tasks.t1.status='done'; prog('t1','Opened PR #901',{elapsed:'38 min', kind:'ok'});
+    add({k:'echo', tid:'t1', text:'<b>Fix login crash in iPad landscape</b> complete', sub:'2 files changed · Tests 42/42 passed · PR #901', acts:['View changes','Merge','Tell teammate']});
+    prog('t2','Comments 3 and 4 addressed; running tests',{elapsed:'38 min'});
+ }},
+ { name:'Choose a recipient: @ a task to speak directly', apply(){
+    S.clock='9:55';
+    sendText('Address comment 5 too; it’s right', 't2');
+ }},
+ { name:'Drill down without leaving: details rise from below', trigger:'open:t1', apply(){
+    openTask('t1');
+ }},
+ { name:'Task board: every task on one page', trigger:'board', apply(){
+    S.sheet = {type:'board', detent:'full'};
+ }},
+];
+
+/* ---------------- actions ---------------- */
+function startPlan(pid){
+  const p = find(pid); if(!p || p.state!=='open') return;
+  p.state='started';
+  p.tasks.forEach(id => { if(!S.tasks[id]) addTask(id); });
+  if(pid==='p1'){
+    prog('t1','Reading LoginView.swift and recent crash logs',{elapsed:'Just started'});
+    prog('t2','Reading 6 comments on PR #842',{elapsed:'Just started'});
+  } else {
+    p.tasks.forEach(id => prog(id, 'Started; inspecting relevant code',{elapsed:'Just started'}));
+  }
+  p.tasks.forEach(id => add({k:'task', tid:id}));
+  add({k:'ai', html:'Started. I’m watching, and I’ll call you when approval or an answer is needed. Keep talking about anything else.'});
+}
+function answer(aid, text){ const a = find(aid); if(a){ a.answered = text; } }
+function openTask(tid){ S.sheet = {type:'task', tid, detent:'full'}; S.seg='Process'; }
+function sendText(text, to){
+  text = text.trim(); if(!text) return;
+  add({k:'user', text, to});
+  if(to){
+    const t = S.tasks[to];
+    t.log.push({text:'You: '+text, time:S.clock, kind:'you'});
+    if(t.status==='done'){ t.status='working'; }
+    t.live = 'Received: '+text.slice(0,18)+(text.length>18?'…':'');
+    add({k:'ai', html:`Forwarded to “${esc(t.title)}”; it will continue.`, small:true});
+  } else if(/修|改|做|查|跑|写|整理|部署|发|找|看看/.test(text) || /\b(?:fix|change|build|check|run|write|organize|deploy|send|find|look)\b/i.test(text)){ // Task-intent keywords; the Chinese examples remain supported.
+    const id = 'tx'+S.nid;
+    TASKS[id] = { title:text.length>18? text.slice(0,18)+'…' : text, short:text.slice(0,6), where:['Work Mac','persona','Claude Opus 5.5'], icon:'laptop', total:5 };
+    add({k:'plan', id:'p'+id, tasks:[id], state:'open'});
+  } else {
+    add({k:'ai', html:'Got it. Noted.'});
+  }
+  S.route = null;
+}
+function act(kind, arg){
+  const nx = STEPS[S.step+1];
+  if(nx && nx.trigger === kind+':'+arg || (nx && nx.trigger===kind && !arg)){ next(); return; }
+  switch(kind){
+    case 'start': startPlan(arg); break;
+    case 'answer': answer(arg,'Answered'); { const a=find(arg); const t=S.tasks[a.tid]; t.status='working'; t.live='Continuing'; } break;
+    case 'send': find(arg).state='sent'; break;
+    case 'open': openTask(arg); break;
+    case 'board': S.sheet = {type:'board', detent:'full'}; break;
+    case 'say': S.route = arg; document.getElementById('input').focus(); break;
+    case 'undo': find(arg).undone = true; break;
+  }
+  render();
+}
+
+/* ---------------- render ---------------- */
+const $ = id => document.getElementById(id);
+function render(scroll=true){
+  $('clock').textContent = S.clock;
+  const ts = S.order.map(id => S.tasks[id]);
+  const needs = ts.filter(t => t.status==='needs'), working = ts.filter(t => t.status==='working');
+  $('tbSub').innerHTML = needs.length
+    ? `<span class="o">${needs.length} need you</span> · ${working.length} working`
+    : working.length ? `${working.length} tasks working` : '';
+
+  // stream
+  const html = S.items.map(renderItem).join('');
+  const el = $('stream');
+  el.innerHTML = html;
+  S.items.forEach(i => S.seen.add(i.key));
+  if(scroll){ el.scrollTop = el.scrollHeight; requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; }); }
+
+  // dock
+  const rank = {needs:0, working:1, done:2};
+  const docked = ts.filter(t => !(t.status==='done' && t.seenDone)).sort((a,b) => rank[a.status]-rank[b.status]);
+  const doneCount = ts.filter(t => t.status==='done').length;
+  $('dock').innerHTML = docked.map(t => `<button class="pill ${t.status}" onclick="pillTap('${t.id}')">${st(t.status)}${esc(t.status==='needs' ? t.short+' · Needs you' : t.short)}</button>`).join('')
+    + (ts.length ? `<button class="pill all" onclick="act('board')">${ic('grid')} All ${ts.length}${doneCount?` · ${doneCount} done`:''}</button>` : '');
+  $('dock').style.display = ts.length ? '' : 'none';
+
+  // route chip
+  const txt = $('input').value.trim();
+  $('route').innerHTML = S.route
+    ? `<div class="route"><span class="rc">${ic('reply')} To “${esc(S.tasks[S.route].short)}” <button onclick="S.route=null;render(false)">${ic('x')}</button></span></div>`
+    : txt && !S.mention ? `<div class="route"><span class="rc auto">${ic('spark')} Persona chooses the recipient</span></div>` : '';
+
+  // mention
+  $('mention').innerHTML = S.mention ? `<div class="mention">
+      <h6>Tasks</h6>${ts.filter(t=>t.status!=='done'||!t.seenDone).map(t=>`<button onclick="pickMention('${t.id}')">${st(t.status)} ${esc(t.title)}<small>${esc(t.where[0])}</small></button>`).join('')}
+      <h6>Computers · Projects · People</h6>
+      <button>${ic('laptop')} Work Mac<small>Computer</small></button>
+      <button>${ic('folder')} persona<small>Project</small></button>
+      <button>${ic('bubble')} Teammate<small>Lark</small></button>
+    </div>` : '';
+
+  renderSheet();
+  renderDoc();
+  $('prevBtn').disabled = S.step<=0;
+  $('nextBtn').disabled = S.step>=STEPS.length-1;
+  $('stepName').textContent = S.step>=0 ? `Step ${S.step+1} / ${STEPS.length} · ${STEPS[S.step].name}` : '';
+}
+function cls(i){ return S.seen.has(i.key) ? 'it old' : 'it'; }
+
+function renderItem(i){
+  const c = cls(i);
+  switch(i.k){
+  case 'day': return `<div class="${c} day">${i.text}</div>`;
+  case 'user': return `<div class="${c} user">${i.to?`<div class="to">${ic('reply')} To “${esc(S.tasks[i.to].short)}”</div>`:''}<div class="b">${esc(i.text)}</div></div>`;
+  case 'ai': return `<div class="${c} ai"><span class="avatar sm"></span><div class="t" ${i.small?'style="color:var(--sub);font-size:14px"':''}>${i.html}</div></div>`;
+  case 'brief': return `<div class="${c} ai"><span class="avatar sm"></span><div class="t">Good morning. Here’s today:
+      <div class="card" style="margin-top:9px">
+        <div class="row"><span class="ri" style="background:var(--green-soft);color:var(--green)">${ic('moon')}</span><div class="rt">1 task finished overnight<div class="rs">Archived yesterday’s 4 meeting notes</div></div><button class="mini" onclick="act('open','t0')">View</button></div>
+        <div class="row"><span class="ri" style="background:var(--accent-soft);color:var(--accent)">${ic('cal')}</span><div class="rt">15:00 design review · 16:30 1:1<div class="rs">Review material not ready</div></div><button class="mini">Prepare</button></div>
+        <div class="row"><span class="ri" style="background:rgba(51,112,255,.13);color:var(--blue)">${ic('bubble')}</span><div class="rt">5 Lark mentions<div class="rs">2 seem to need a reply</div></div><button class="mini">Review</button></div>
+        <div class="row"><span class="ri" style="background:var(--orange-soft);color:var(--orange)">${ic('mail')}</span><div class="rt">Card bill due November 8<div class="rs">Email · Card issuer</div></div><button class="mini">Remind me</button></div>
+        <div class="row"><span class="ri" style="background:var(--card2);color:var(--sub)">${ic('bell')}</span><div class="rt">18:00 pick up package<div class="rs">Reminder</div></div></div>
+      </div></div></div>`;
+  case 'plan': {
+    if(i.state==='started') return `<div class="${c} ai"><span class="avatar sm"></span><div class="t" style="color:var(--sub);font-size:14px">${ic('check')} Started ${i.tasks.length} tasks</div></div>`;
+    return `<div class="${c} ai"><span class="avatar sm"></span><div class="t">${i.tasks.length>1?`Split into ${i.tasks.length} tasks. Here’s the plan:`:'Here’s the plan:'}
+      <div class="card" style="margin-top:9px;padding:4px 14px 12px">
+      ${i.tasks.map((id,n) => { const d=TASKS[id]; return `<div class="ptask"><div class="pt"><span class="num">${n+1}</span>${esc(d.title)}</div>
+        <div class="chips"><span class="chip edit">${ic('laptop')}${d.where[0]}</span><span class="chip edit">${ic('folder')}${d.where[1]}</span><span class="chip edit">${ic('cpu')}${d.where[2]}</span><span class="chip edit">Can edit files</span></div>
+        <div class="why">${id==='t1'?'Agents have worked on persona on Work Mac over the last 3 days; you used Opus for this kind of iOS fix last time.':id==='t2'?'Same repository, separate worktree to avoid conflicts; you often use Codex for reviews.':'Inferred from your habits and projects in Knowledge.'}</div></div>`; }).join('')}
+      <div class="btns"><button class="btn pri" onclick="act('start','${i.id}')">Start${i.tasks.length>1?` ${i.tasks.length} tasks`:''}</button><button class="btn">Adjust</button></div>
+      </div></div></div>`;
+  }
+  case 'task': return renderTask(S.tasks[i.tid], c);
+  case 'quick': return `<div class="${c} quick" ${i.undone?'style="opacity:.5"':''}><span class="ri">${ic(i.icon)}</span><div class="qt">${i.undone?'Undone':i.text}<small>${i.sub}</small></div>${i.undone?'':`<button class="mini" onclick="act('undo','${i.id}')">Undo</button>`}</div>`;
+  case 'ask': {
+    const t = S.tasks[i.tid];
+    if(i.answered) return `<div class="${c} ask answered" id="${i.id}"><div class="from">${ic('check')} ${esc(t.short)} · ${esc(i.answered)}</div></div>`;
+    return `<div class="${c} ask" id="${i.id}"><div class="from">${ic('hand')} ${esc(t.title)}</div>
+      <div class="q">${esc(i.q)}</div>
+      ${i.code?`<div class="code">${esc(i.code)}</div>`:''}
+      ${i.type==='approve'
+        ? `<div class="btns"><button class="btn warn" onclick="act('answer','${i.id}')">Approve</button><button class="btn" onclick="act('answer','${i.id}')">Allow for task</button><button class="btn ghost">Deny…</button></div>`
+        : i.opts.map(o=>`<button class="opt" onclick="act('answer','${i.id}')"><b>${o[0]}</b>${esc(o[1])}</button>`).join('') + `<div class="meta" style="margin-top:8px">Or type an answer; sending directs it to this task</div>`}
+      </div>`;
+  }
+  case 'inbox': return `<div class="${c} ai"><span class="avatar sm"></span><div class="t">Someone on Lark is asking about the fix in progress:
+      <div class="card inbox" style="margin-top:9px">
+        <div class="src"><span class="lark">${ic('bubble')}</span><b>Teammate</b><span style="color:var(--sub)">· Client releases · @you</span></div>
+        <div class="quote">Can the login crash be fixed today? We’d like a TestFlight build this afternoon</div>
+        <div class="link" onclick="act('open','t1')">${st(S.tasks.t1.status)}<span style="flex:1">Fix login crash in iPad landscape · ${esc(S.tasks.t1.live)}</span>${ic('chev')}</div>
+        ${i.state==='sent'
+          ? `<div class="draft" style="background:var(--green-soft)"><small style="color:var(--green)">${ic('check')} Replied as you</small>Tests passed. I’ll open the PR before ten, in time for this afternoon’s release.</div>`
+          : `<div class="draft"><small>Drafted from task progress</small>Tests passed. I’ll open the PR before ten, in time for this afternoon’s release.</div>
+             <div class="btns"><button class="btn pri" onclick="act('send','m1')">Send</button><button class="btn">Adjust</button><button class="btn ghost">Later</button></div>`}
+      </div></div></div>`;
+  case 'echo': return `<div class="${c} echo">${st('done')}<div class="et">${i.text}<div class="es">${i.sub}</div>
+      <div class="btns" style="margin-top:8px">${i.acts.map((a,n)=>`<button class="mini" onclick="${a==='View changes'||a==='Open'?`act('open','${i.tid}')`:''}">${a}</button>`).join('')}</div></div></div>`;
+  }
+  return '';
+}
+function renderTask(t, c){
+  const total = t.total||5;
+  const bars = Array.from({length:total},(_,n)=>`<i class="${n<t.done?'on':''}"></i>`).join('');
+  const lineCls = t.status==='done'?'ok':t.status==='needs'?'wait':'';
+  const lineIc = t.status==='done'?'check':t.status==='needs'?'hand':'term';
+  return `<div class="${c} task ${t.status}" onclick="act('open','${t.id}')">
+    <div class="th">${st(t.status)}<div class="tt">${esc(t.title)}</div><span class="te">${esc(t.elapsed)}</span></div>
+    <div class="tw">${t.where.join(' · ')} ${t.auto?`<span class="auto">${t.auto}</span>`:''}</div>
+    <div class="tl ${lineCls}">${ic(lineIc)}<span class="${t.status==='working'?'livedots':''}">${esc(t.live)}</span></div>
+    <div class="steps">${bars}</div>
+    ${t.status!=='done'?`<div class="tf"><span>Step ${Math.max(1,t.done)} / ${total}</span><span style="flex:1"></span><button onclick="event.stopPropagation();act('say','${t.id}')">Say something</button><button onclick="event.stopPropagation()">Stop</button></div>`:''}
+  </div>`;
+}
+function renderSheet(){
+  const sh = $('sheet'), sc = $('scrim');
+  if(!S.sheet){ sh.classList.remove('on'); sc.className='scrim'; return; }
+  sh.className = 'sheet on' + (S.sheet.detent==='mid'?' mid':'');
+  sc.className = 'scrim on' + (S.sheet.detent==='mid'?' mid':'');
+  if(S.sheet.type==='task'){
+    const t = S.tasks[S.sheet.tid];
+    const segs = ['Process','Changes','Terminal'];
+    let body = '';
+    if(S.seg==='Process'){
+      body = `<div class="chips" style="margin:0 0 12px">${t.where.map((w,n)=>`<span class="chip">${ic(['laptop','folder','cpu'][n])}${w}</span>`).join('')}<span class="chip">${ic('clock')}${esc(t.elapsed)}</span></div>
+        <div class="log">${t.log.map(l=>`<div class="lg ${l.kind}">${esc(l.text)}<small>${l.time}</small></div>`).join('')}
+        ${t.status==='working'?`<div class="lg"><span class="livedots">In progress</span></div>`:''}</div>`;
+    } else if(S.seg==='Changes'){
+      body = t.id==='t1' ? `<div class="diff"><div class="f">LoginView.swift  <span style="color:var(--green)">+6</span> <span style="color:var(--red)">−2</span></div>
+<div>  GeometryReader { proxy in</div><div class="d">-   let h = proxy.size.height * 0.6</div><div class="a">+   let h = max(proxy.size.height, container.height) * 0.6</div><div class="a">+   guard h > 0 else { return EmptyView() }</div><div>    LoginSheet(height: h)</div></div>
+        <div class="diff"><div class="f">LoginViewTests.swift  <span style="color:var(--green)">+18</span></div><div class="a">+ func testRotateOnIPad() { … }</div></div>
+        <div class="btns"><button class="btn pri">Merge PR #901</button><button class="btn">Request changes</button></div>`
+        : `<div class="why" style="font-size:14px">No changes yet</div>`;
+    } else {
+      body = `<div class="code" style="white-space:pre;line-height:1.6;padding:12px">$ xcodebuild test -scheme Persona \\
+    -destination 'iPad Air'
+Test Suite 'All tests' started
+…
+Executed 42 tests, with 0 failures
+** TEST SUCCEEDED **</div><div class="why">The same herdr pane on this computer, just like the existing terminal page.</div>`;
+    }
+    sh.innerHTML = `<div class="grab" onclick="toggleDetent()"><i></i></div>
+      <div class="sh-h">${st(t.status)}<div style="flex:1"><div class="tt">${esc(t.title)}</div><div class="meta">${t.status==='done'?'Done':t.status==='needs'?'Needs you':'Working'} · From main chat</div></div><button class="circle" onclick="closeSheet()">${ic('x')}</button></div>
+      <div class="seg">${segs.map(s=>`<button class="${s===S.seg?'on':''}" onclick="S.seg='${s}';render(false)">${s}</button>`).join('')}</div>
+      <div class="sh-body">${body}</div>
+      <div class="sh-foot"><div class="composer"><button class="cb">${ic('plus')}</button><textarea rows="1" placeholder="Message this task…"></textarea><button class="send">${ic('up')}</button></div><button class="circle" title="Take over on computer">${ic('term')}</button></div>`;
+  } else {
+    const ts = S.order.map(id=>S.tasks[id]);
+    const group = (name, list) => list.length ? `<div class="sec"><span>${name}</span><span>${list.length}</span></div>` + list.map(t=>`<div class="brow" onclick="openTask('${t.id}');render(false)">${st(t.status)}<div class="bt">${esc(t.title)}<small>${esc(t.where.join(' · '))} · ${esc(t.status==='done'?t.elapsed:t.live)}</small></div><span class="chev">${ic('chev')}</span></div>`).join('') : '';
+    sh.innerHTML = `<div class="grab" onclick="toggleDetent()"><i></i></div>
+      <div class="sh-h"><div style="flex:1"><div class="tt">Tasks</div><div class="meta">Started from main chat today, and scheduled</div></div><button class="circle" onclick="closeSheet()">${ic('x')}</button></div>
+      <div class="sh-body">
+        ${group('Needs you', ts.filter(t=>t.status==='needs'))}
+        ${group('Working', ts.filter(t=>t.status==='working'))}
+        ${group('Done today', ts.filter(t=>t.status==='done'))}
+        <div class="sec"><span>Scheduled</span><span>2</span></div>
+        <div class="brow">${ic('repeat','style="color:var(--accent)"')}<div class="bt">Morning briefing<small>Weekdays 09:00 · Ran today</small></div><span class="chev">${ic('chev')}</span></div>
+        <div class="brow">${ic('repeat','style="color:var(--faint)"')}<div class="bt">Evening review<small>Weekdays 21:30 · Off</small></div><span class="chev">${ic('chev')}</span></div>
+      </div>`;
+  }
+}
+function toggleDetent(){ S.sheet.detent = S.sheet.detent==='mid'?'full':'mid'; render(false); }
+function closeSheet(){ S.sheet = null; render(false); }
+function pillTap(id){
+  const t = S.tasks[id];
+  if(t.status==='needs'){
+    const a = [...S.items].reverse().find(i => i.k==='ask' && i.tid===id && !i.answered);
+    if(a){ const el = document.getElementById(a.id); el.scrollIntoView({behavior:'smooth', block:'center'}); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); return; }
+  }
+  act('open', id);
+}
+function pickMention(id){
+  const inp = $('input'); inp.value = inp.value.replace(/@\S*$/, ''); S.route = id; S.mention = false; render(false); inp.focus();
+}
+
+/* ---------------- doc ---------------- */
+const DOC = [
+ ['Morning: Persona speaks first', `The first screen each day is Persona’s “Today”: tasks finished overnight, calendar events, Lark/email needing replies, and reminders. <b>Life and work share one card, not separate tabs</b>. Each row has an action; tapping speaks on your behalf.<br>Why: a unified entry must have the fullest information. Each message’s live snapshot (<code>&lt;persona-context&gt;</code>) already has this data; it just has not been shown to people.`],
+ ['State intent, not project choices', `One request with two jobs becomes two tasks. Persona <b>fills in the computer, project, model, and permissions automatically</b>, with a one-line reason (knowledge-base project/directory mappings, computers recently working in this repository, past habits). Every choice is an editable chip.<br>Why: choosing is the burden, not speaking. Correcting one wrong chip is much cheaper than choosing everything from scratch each time.`],
+ ['Tasks start: live cards, overview in the dock', `The plan folds into two <b>task cards</b>: current action, step, elapsed time. Progress <b>updates only that card, without flooding the chat</b>.<br>A <b>task dock</b> appears above the input: one pill per task, spinner for working, orange dot for Needs you, green check for done. Wherever you scroll, you can see how many tasks are running.`],
+ ['Keep talking: instant actions / auto-start', `No waiting; keep talking. Three tiers by cost: <b>Instant</b> (one phone tool call, such as a reminder or event, with Undo on the result card) → <b>Auto-start</b> (read-only research or preparation, labeled “Auto-start · Read only”) → <b>Plan first</b> (code changes, multiple Agents, first work on this project).<br>Life and work use the same input; Persona chooses the tier.`],
+ ['Needs you: questions at the bottom, answer in place', `When a task needs command approval or an answer, its question card appears <b>at the bottom of the chat</b>, where you are looking. The task card gets an orange outline, its dock pill turns orange, and the header says “1 needs you”. <b>Tap the orange pill to jump straight to the question</b>.<br>These are the existing app’s question/approval cards, without entering an Agent’s chat to find them.`],
+ ['Several tasks need you: answer one, then the next', `Answered question cards fold to one line, retaining your choice. When several tasks are blocked, questions appear at the bottom in arrival order, with the remaining count in the header.<br>Completed read-only tasks show a green <b>receipt</b> at the bottom, with next actions (Open, Send to meeting group).`],
+ ['Information and tasks recognize each other', `Someone on Lark asks whether the login crash can be fixed today. Persona links it to “Fix login crash in iPad landscape” and <b>drafts a reply from current task progress</b>; you just tap Send. The message card links the task so you can inspect its process.<br>Inbox messages, events, emails, and tasks cross-reference each other: this is the value of handling all information and all Agents through one entry.`],
+ ['Completion receipt: what changed, what next', `When a task finishes, its card shows done and a bottom receipt explains the result (files changed, tests, PR), with next actions: View changes, Merge, Tell the person who asked.<br>The dock pill gets a check, then moves into “All” once seen, freeing space.`],
+ ['Choose a recipient: @ a task to speak directly', `Messages go to Persona by default. It chooses whether to answer, start a new task, or forward to an existing task (while typing, the chip says “Persona chooses the recipient”).<br>To speak to a task directly, <b>type @ and select it</b>, or tap “Say something” on its card. A route chip above input says “To ‘#842 review’”, and the sent bubble carries it too. Persona forwards the reply to that Agent. Try typing @ in the phone.`],
+ ['Drill down without leaving: details rise from below', `Tap a task card, dock pill, or receipt’s View changes. Details rise from the bottom, using the same interaction as link cards: full-screen on open; <b>tap the top handle to lower it to 0.6, keeping the main chat visible and scrollable</b>.<br>Inside is the current Agent page in three sections: Process, Changes, Terminal. Below, message the Agent directly or take over on the computer.`],
+ ['Task board: every task on one page', `Tap “All” at the dock’s right edge. Main-chat tasks group by <b>Needs you / Working / Done today / Scheduled</b>.<br>The “Assistant | Agents” header and Agents page stay unchanged. These tasks are ordinary Agent sessions, visible and controllable in Agents with the same shared data. The board is just the main-chat-side view.`],
+];
+function renderDoc(){
+  const d = $('doc');
+  if(!d.dataset.built){
+    d.dataset.built = 1;
+    d.innerHTML = `<h2>Three layers</h2>
+      <div class="layers">
+        <div class="layer"><h3>${ic('bubble')} Chat stream</h3><p>You speak only to Persona. Answers, task cards, questions, and receipts appear here chronologically. Progress updates in place, without flooding the chat.</p></div>
+        <div class="layer"><h3>${ic('grid')} Task dock</h3><p>Pills above the input for main-chat tasks working or needing you now. Always visible regardless of chat scroll; tap to drill down.</p></div>
+        <div class="layer"><h3>${ic('hand')} Needs you</h3><p>When any task needs approval or an answer, its question rises to the chat bottom. Answer in place. The dock and header turn orange too.</p></div>
+      </div>
+      <h2>Walk through the script (click any section to jump)</h2>
+      ${DOC.map((x,n)=>`<div class="stepdoc" id="sd${n}" onclick="goTo(${n})"><h3><span>${String(n+1).padStart(2,'0')}</span>${x[0]}</h3><p>${x[1]}</p>${STEPS[n].trigger?`<div class="hint">Tapping ${({'start:p1':'“Start 2 tasks”','answer:a1':'“Approve”','answer:a2':'an option','send:m1':'“Send”','open:t1':'“View changes” or a task card','board':'“All” at the dock’s right edge'})[STEPS[n].trigger]} in the phone also advances to this step</div>`:''}</div>`).join('')}
+
+      <h2>Mapping to the current implementation</h2>
+      <table>
+        <tr><th>Prototype</th><th>Already available</th><th>Needed</th></tr>
+        <tr><td>Unified entry</td><td>Main chat <code>assistant.main</code>; “Hand to Persona” on other pages sends there</td><td>Change only the assistant page; keep “Assistant | Agents” header and Agents page</td></tr>
+        <tr><td>Dispatch plans / tasks</td><td><code>agent_start</code> / <code>agent_send</code>; to-dos (<code>todos</code> + <code>todo_agents</code>, including derived following)</td><td>One task = one to-do + linked Agents; assistant uses new <code>task_plan</code> to produce structured plan cards rendered by the app, inferring machine/project/model</td></tr>
+        <tr><td>Task cards update in place</td><td>Hub session state (decorated), node <code>session.items</code></td><td>New main-chat item referencing task ID; app renders task state, not text messages</td></tr>
+        <tr><td>Needs you</td><td>Question / approval interactions and push</td><td>Render task interactions in main chat; dock/header counts share the same source</td></tr>
+        <tr><td>Receipts</td><td>Due follow-ups send “⏰” messages into the original chat</td><td>Hub appends receipt items to main chat on task completion/failure, visible to the assistant for further suggestions</td></tr>
+        <tr><td>Information links to tasks</td><td>Inbox triage, AI twin reply drafts, live snapshots</td><td>Message ↔ task links bridged by knowledge-base projects/people</td></tr>
+        <tr><td>Task details</td><td>Agent chats, terminal, file/diff viewers; bottom-up link cards</td><td>Embed Agent page in a bottom card, split into Process / Changes / Terminal</td></tr>
+      </table>
+
+      <h2>Decisions needed</h2>
+      <div class="qa"><h3>1. Auto-start boundaries</h3><p>Three prototype tiers: instant / read-only auto-start / plan before changes. <b>Suggestion</b>: add “Start this kind directly next time” to plans, remembering by project × operation type, expanding trust gradually.</p></div>
+      <div class="qa"><h3>2. Are tasks and to-dos the same thing?</h3><p><b>Suggestion</b>: yes. To-dos already link multiple Agents, follow derived work, and show progress; a task is a to-do created from chat. Merge the To-dos page into the task board.</p></div>
+      <div class="qa"><h3>3. The main chat keeps growing</h3><p><b>Suggestion</b>: day sections using dates at the top; progress only updates cards, never adds chat messages. Fold old task cards to one line; let assistant compaction and Knowledge handle context. Keep side chats, but make their entry less prominent.</p></div>
+      <div class="qa"><h3>4. Watch / lock screen</h3><p><b>Suggestion</b>: only the task dock and Needs you. Live Activities show working/waiting counts; Watch can approve and select options.</p></div>`;
+  }
+  document.querySelectorAll('.stepdoc').forEach((e,n)=>e.classList.toggle('on', n===S.step));
+}
+
+/* ---------------- navigation ---------------- */
+function goTo(n){
+  fresh();
+  for(let i=0;i<=n;i++){ S.step=i; S.sheet=null; STEPS[i].apply(); }
+  S.items.forEach(i => S.seen.add(i.key));
+  render();
+  const el = document.getElementById('sd'+n);
+  if(el && window.innerWidth>1000) el.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+function next(){
+  if(S.step>=STEPS.length-1) return;
+  S.step++; S.sheet=null; STEPS[S.step].apply(); render();
+  const el = document.getElementById('sd'+S.step);
+  if(el && window.innerWidth>1000) el.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+let autoT = null;
+function auto(){
+  if(autoT){ clearInterval(autoT); autoT=null; $('autoBtn').textContent='Autoplay'; return; }
+  if(S.step>=STEPS.length-1) goTo(0);
+  $('autoBtn').textContent='Stop playback';
+  autoT = setInterval(()=>{ if(S.step>=STEPS.length-1){ auto(); return; } next(); }, 3200);
+}
+
+/* ---------------- wiring ---------------- */
+$('newIc').innerHTML = ic('plus');
+function showAgents(on){ $('agentsPage').classList.toggle('on',on); $('swA').classList.toggle('on',!on); $('swB').classList.toggle('on',on); }
+$('swA').onclick=()=>showAgents(false); $('swB').onclick=()=>showAgents(true);
+$('plusIc').innerHTML = ic('plus');
+$('sendBtn').innerHTML = ic('up');
+$('nextBtn').onclick = next;
+$('prevBtn').onclick = () => goTo(Math.max(0,S.step-1));
+$('resetBtn').onclick = () => goTo(0);
+$('autoBtn').onclick = auto;
+$('scrim').onclick = closeSheet;
+$('themeBtn').onclick = () => { document.body.dataset.theme = document.body.dataset.theme==='light'?'dark':'light'; };
+const inp = $('input');
+inp.addEventListener('input', () => { S.mention = /(^|\s)@\S*$/.test(inp.value); render(false); });
+inp.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); doSend(); } });
+$('sendBtn').onclick = doSend;
+function doSend(){
+  const v = inp.value; if(!v.trim()) return;
+  if(S.step===7 && !S.route){ /* stay on free mode */ }
+  inp.value=''; S.mention=false; sendText(v, S.route); render();
+}
+function fit(){ const ph=document.querySelector('.phone'); if(innerWidth<=480){ph.style.zoom='';return;} const z=Math.min(1,(innerHeight-120)/870); ph.style.zoom=z; }
+addEventListener('resize',fit); fit();
+if(matchMedia('(prefers-color-scheme: dark)').matches) document.body.dataset.theme='dark';
+(function(){
+  const h = new URLSearchParams(location.hash.slice(1));
+  if(h.get('theme')) document.body.dataset.theme = h.get('theme');
+  goTo(Math.min(STEPS.length-1, +(h.get('step')||1)-1));
+  if(h.get('mid') && S.sheet) { S.sheet.detent='mid'; render(false); }
+  if(h.get('mention')) { $('input').value='@'; S.mention=true; render(false); }
+})();
+</script>
+</body>
+</html>

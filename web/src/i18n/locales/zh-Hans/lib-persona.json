@@ -1,0 +1,5 @@
+{
+  "state_idle": "空闲",
+  "state_thinking": "思考中",
+  "state_offline": "离线"
+}

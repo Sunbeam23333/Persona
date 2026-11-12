@@ -1,0 +1,1066 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "view.schema.json",
+  "title": "Extension views",
+  "description": "What an extension draws (ui.render, ui.action): a View of sections of components, drawn by every app with its own design system. Also the assistant's persona-card, which joins the components in #1850.",
+  "$defs": {
+    "Tone": {
+      "description": "A role color the app picks, never one of the extension's own. An unknown tone draws as neutral.",
+      "type": "string",
+      "enum": ["neutral", "positive", "caution", "danger"]
+    },
+    "TextStyle": {
+      "description": "title and headline (UI version 6) are a section's big title and a small heading; an older app draws them as body.",
+      "type": "string", "enum": ["body", "secondary", "caption", "code", "title", "headline"]},
+    "FieldKind": {
+      "description": "date, time, datetime, multichoice and multiline are UI version 6. Values stay strings: date YYYY-MM-DD, time HH:MM (24 hours), datetime YYYY-MM-DDTHH:MM local to context.tz, multichoice a JSON array of the chosen values, multiline the text with \\n.",
+      "type": "string", "enum": ["text", "secret", "number", "toggle", "choice", "date", "time", "datetime", "multichoice", "multiline"]},
+    "ChartKind": {
+      "description": "area, candlestick, donut and pie are UI version 6: an older app gets a line (an area, a candlestick's closes) or bars (a donut, a pie).",
+      "type": "string", "enum": ["bar", "line", "area", "candlestick", "donut", "pie"]},
+    "CandleRising": {"description": "A candlestick's rising candle: green (the default) or red, as the market writes it; the falling one is the other.", "type": "string", "enum": ["green", "red"]},
+    "Color": {
+      "description": "A named color (UI version 6): each app has its own of each, right in light and dark and in every style. Not a hex; an unknown one draws as the app's quiet ink. Only on badges, icons, tiles, chart series and sparks, never on text; never with a tone on the same object.",
+      "type": "string",
+      "enum": ["red", "orange", "amber", "yellow", "green", "teal", "blue", "indigo", "purple", "pink", "gray"]
+    },
+    "ButtonRole": {"type": "string", "enum": ["normal", "destructive"]},
+    "Placement": {
+      "description": "A slot in the apps an extension draws at (docs \"UI slots\"). extension_page is plugin_page's new name (UI version 3): the hub takes both and answers the new API with extension_page, the old one with plugin_page.",
+      "type": "string",
+      "enum": ["plugin_page", "launcher_section", "nav_page", "overview_card", "machine_section", "inbox_item", "extension_page", "widget", "capsule_card"]
+    },
+    "Size": {
+      "description": "How much room a view has: compact (a card), full (a page, a section), or for a widget the family it is drawn for (WidgetFamily).",
+      "type": "string",
+      "enum": ["compact", "full", "small", "medium", "large", "accessory_circular", "accessory_rectangular", "accessory_inline"]
+    },
+    "WidgetFamily": {
+      "description": "A widget's size outside the app (docs \"System placements\"): a home screen widget's small / medium / large, a Lock Screen or watch face complication's accessory_*.",
+      "type": "string",
+      "enum": ["small", "medium", "large", "accessory_circular", "accessory_rectangular", "accessory_inline"]
+    },
+    "Platform": {"type": "string", "enum": ["ios", "mac", "android", "web"]},
+    "NavIcon": {
+      "description": "The fixed icon set: a nav_page's icon, a row's, an empty state's (UI version 3 for the last two and the icons after money; 4 for those after settings; 6 for those after file, and a metric's, a tile's, a row action's). Each app draws its own icon for the meaning; an unknown one draws as the default (extension; plugin is its old name).",
+      "type": "string",
+      "enum": ["plugin", "chart", "gauge", "list", "bell", "doc", "calendar", "money", "extension", "person", "chat", "mail", "link", "folder", "star", "check", "warning", "clock", "tag", "search", "settings", "branch", "commit", "code", "pull_request", "merge", "file",
+        "home", "sofa", "light", "power", "fan", "thermometer", "droplet", "lock", "unlock", "door", "window", "camera", "video", "play", "pause", "stop", "speaker", "music", "tv", "plug", "battery", "bolt", "sun", "moon", "cloud", "rain", "snow", "wind", "leaf", "car", "location", "robot", "wifi", "shield", "trend_up", "trend_down", "wallet", "bank", "heart", "plus", "minus", "trash", "edit", "refresh", "share", "info"]
+    },
+    "View": {
+      "type": "object",
+      "properties": {
+        "title": {"type": "string", "maxLength": 2000},
+        "sections": {"type": "array", "items": {"$ref": "#/$defs/Section"}},
+        "state": {"type": "string", "description": "The extension's own, sent back with the next render or action; at most 16 KB."},
+        "refresh_after": {"type": "integer", "minimum": 0, "maximum": 86400, "x-since": 2,
+          "description": "Draw again after this many seconds while on screen (30 at least; 0 never)."},
+        "search": {"$ref": "#/$defs/Search", "x-since": 3},
+        "filter": {"$ref": "#/$defs/Filter", "x-since": 3},
+        "tabs": {"$ref": "#/$defs/Tabs", "x-since": 4},
+        "layout": {"$ref": "#/$defs/Layout", "x-since": 4},
+        "review": {"$ref": "#/$defs/Review", "x-since": 5},
+        "fallback": {"type": "string", "minLength": 1, "maxLength": 2000, "description": "Plain text for an assistant card: required by CheckAssistantView; not required for extension views."},
+        "pages": {"type": "object", "additionalProperties": {"$ref": "#/$defs/View"}, "description": "Assistant card details keyed by page name; at most 8. A detail page cannot contain pages itself. Push.page refers to this root map."}
+      },
+      "required": ["sections"]
+    },
+    "Section": {
+      "type": "object",
+      "properties": {
+        "key": {"type": "string", "minLength": 1, "maxLength": 128, "x-since": 7,
+          "description": "Stable section identity in stream protocol 1 (UI version 7); optional for legacy snapshots."},
+        "title": {"type": "string", "maxLength": 2000},
+        "footer": {"type": "string", "maxLength": 2000},
+        "items": {"type": "array", "items": {"$ref": "#/$defs/Component"}},
+        "more": {"$ref": "#/$defs/More", "x-since": 3},
+        "pane": {"$ref": "#/$defs/Pane", "x-since": 4}
+      },
+      "required": ["items"]
+    },
+    "Component": {
+      "description": "One component of a view, told apart by type. A type an app does not know is skipped and the rest drawn.",
+      "x-discriminator": "type",
+      "oneOf": [
+        {"$ref": "#/$defs/TextComponent"},
+        {"$ref": "#/$defs/MetricComponent"},
+        {"$ref": "#/$defs/ProgressComponent"},
+        {"$ref": "#/$defs/RowComponent"},
+        {"$ref": "#/$defs/ButtonComponent"},
+        {"$ref": "#/$defs/LinkComponent"},
+        {"$ref": "#/$defs/FieldComponent"},
+        {"$ref": "#/$defs/DividerComponent"},
+        {"$ref": "#/$defs/ChartComponent"},
+        {"$ref": "#/$defs/StatGridComponent"},
+        {"$ref": "#/$defs/SegmentedComponent"},
+        {"$ref": "#/$defs/MarkdownComponent"},
+        {"$ref": "#/$defs/TableComponent"},
+        {"$ref": "#/$defs/EmptyComponent"},
+        {"$ref": "#/$defs/LoadingComponent"},
+        {"$ref": "#/$defs/HtmlComponent"},
+        {"$ref": "#/$defs/HeaderComponent"},
+        {"$ref": "#/$defs/BreadcrumbComponent"},
+        {"$ref": "#/$defs/FileTreeComponent"},
+        {"$ref": "#/$defs/CodeComponent"},
+        {"$ref": "#/$defs/DiffComponent"},
+        {"$ref": "#/$defs/CommentThreadComponent"},
+        {"$ref": "#/$defs/ComposerComponent"},
+        {"$ref": "#/$defs/ImageComponent"},
+        {"$ref": "#/$defs/GridComponent"},
+        {"$ref": "#/$defs/CarouselComponent"}
+      ]
+    },
+    "TextComponent": {
+      "description": "A paragraph.",
+      "type": "object", "x-since": 1,
+      "properties": {
+        "type": {"const": "text"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3},
+        "text": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "style": {"$ref": "#/$defs/TextStyle"}
+      },
+      "required": ["type", "text"]
+    },
+    "MetricComponent": {
+      "description": "A number with its label.",
+      "type": "object", "x-since": 1,
+      "properties": {
+        "type": {"const": "metric"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3},
+        "label": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "value": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "detail": {"type": "string", "maxLength": 2000},
+        "tone": {"$ref": "#/$defs/Tone"},
+        "icon": {"$ref": "#/$defs/NavIcon", "x-since": 6},
+        "icon_color": {"$ref": "#/$defs/Color", "x-since": 6},
+        "spark": {"$ref": "#/$defs/Spark", "x-since": 6}
+      },
+      "required": ["type", "label", "value"]
+    },
+    "ProgressComponent": {
+      "description": "A bar filled to ratio (0 to 1).",
+      "type": "object", "x-since": 1,
+      "properties": {
+        "type": {"const": "progress"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3},
+        "label": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "ratio": {"type": "number", "minimum": 0, "maximum": 1, "x-go-pointer": true},
+        "detail": {"type": "string", "maxLength": 2000},
+        "tone": {"$ref": "#/$defs/Tone"}
+      },
+      "required": ["type", "label", "ratio"]
+    },
+    "RowComponent": {
+      "description": "A row of a list; with an action it can be tapped.",
+      "type": "object", "x-since": 1,
+      "properties": {
+        "type": {"const": "row"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3},
+        "title": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "subtitle": {"type": "string", "maxLength": 2000},
+        "value": {"type": "string", "maxLength": 2000},
+        "badge": {"$ref": "#/$defs/Badge"},
+        "action": {"$ref": "#/$defs/Action"},
+        "icon": {"$ref": "#/$defs/NavIcon", "x-since": 3, "description": "At most one of icon, avatar and thumbnail."},
+        "avatar": {"$ref": "#/$defs/Avatar", "x-since": 3},
+        "thumbnail": {"$ref": "#/$defs/Thumbnail", "x-since": 3},
+        "icon_color": {"$ref": "#/$defs/Color", "x-since": 6},
+        "control": {"$ref": "#/$defs/RowControl", "x-since": 6, "description": "A switch, a slider or a stepper; the row then has a key."},
+        "actions": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"$ref": "#/$defs/RowAction"}, "x-since": 6,
+          "description": "Extra actions in the row's menu and under a swipe: shortcuts only, the same must be possible on the page the row opens."},
+        "spark": {"$ref": "#/$defs/Spark", "x-since": 6}
+      },
+      "required": ["type", "title"]
+    },
+    "ButtonComponent": {
+      "description": "A button; its title never wraps.",
+      "type": "object", "x-since": 1,
+      "properties": {
+        "type": {"const": "button"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3},
+        "title": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "action": {"$ref": "#/$defs/Action"},
+        "role": {"$ref": "#/$defs/ButtonRole"}
+      },
+      "required": ["type", "title", "action"]
+    },
+    "LinkComponent": {
+      "description": "A link the app opens inside itself: https only.",
+      "type": "object", "x-since": 1,
+      "properties": {
+        "type": {"const": "link"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3},
+        "title": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "url": {"type": "string", "pattern": "^https://[^/?#]+"}
+      },
+      "required": ["type", "title", "url"]
+    },
+    "FieldComponent": {
+      "description": "An input; its value goes back under name when an action submits. A secret is never filled in.",
+      "type": "object", "x-since": 1,
+      "properties": {
+        "type": {"const": "field"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3},
+        "name": {"type": "string", "minLength": 1},
+        "label": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "kind": {"$ref": "#/$defs/FieldKind"},
+        "value": {"type": "string", "maxLength": 2000},
+        "choices": {"type": "array", "items": {"$ref": "#/$defs/Choice"}},
+        "placeholder": {"type": "string", "maxLength": 2000},
+        "earliest": {"type": "string", "maxLength": 40, "x-since": 6, "description": "date, time, datetime: the first one allowed, written like value."},
+        "latest": {"type": "string", "maxLength": 40, "x-since": 6, "description": "date, time, datetime: the last one allowed."},
+        "detail": {"type": "string", "maxLength": 2000, "x-since": 6, "description": "A line of help under the field."}
+      },
+      "required": ["type", "name", "label", "kind"]
+    },
+    "DividerComponent": {
+      "description": "A line between two groups of a section.",
+      "type": "object", "x-since": 1,
+      "properties": {"type": {"const": "divider"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3}},
+      "required": ["type"]
+    },
+    "ChartComponent": {
+      "description": "A chart: bar, line, and in UI version 6 area, candlestick, donut, pie. Every series has the same labels in the same order; with more than one series each is named. A candlestick has one series whose points all have open, high, low and close (value is the close), at most 240 of them; a donut or a pie one series of 2 to 8 points.",
+      "type": "object", "x-since": 2,
+      "properties": {
+        "type": {"const": "chart"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3},
+        "kind": {"$ref": "#/$defs/ChartKind"},
+        "series": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"$ref": "#/$defs/ChartSeries"}},
+        "title": {"type": "string", "maxLength": 2000},
+        "unit": {"type": "string", "maxLength": 2000},
+        "stacked": {"type": "boolean"},
+        "detail": {"type": "string", "maxLength": 2000},
+        "center": {"type": "string", "maxLength": 20, "x-since": 6, "description": "donut: the words in the hole (a total)."},
+        "rising": {"$ref": "#/$defs/CandleRising", "x-since": 6, "description": "candlestick: the color of a rising candle."}
+      },
+      "required": ["type", "kind", "series"]
+    },
+    "StatGridComponent": {
+      "description": "A few numbers side by side.",
+      "type": "object", "x-since": 2,
+      "properties": {
+        "type": {"const": "stat_grid"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3},
+        "stats": {"type": "array", "minItems": 1, "maxItems": 6, "items": {"$ref": "#/$defs/Stat"}}
+      },
+      "required": ["type", "stats"]
+    },
+    "SegmentedComponent": {
+      "description": "One of a few, chosen at once: its action goes with values {name: the chosen value}.",
+      "type": "object", "x-since": 2,
+      "properties": {
+        "type": {"const": "segmented"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3},
+        "name": {"type": "string", "minLength": 1},
+        "choices": {"type": "array", "minItems": 2, "maxItems": 5, "items": {"$ref": "#/$defs/Choice"}},
+        "value": {"type": "string"},
+        "action": {"$ref": "#/$defs/Action"}
+      },
+      "required": ["type", "name", "choices", "value", "action"]
+    },
+    "MarkdownComponent": {
+      "description": "Text in a safe subset of Markdown: headings (1 to 3), paragraphs, lists, bold, italics, inline code, code blocks, quotes, https links (opened in the app). No HTML, no images, no tables (a table is a table component). An older app gets it as plain text.",
+      "type": "object", "x-since": 3,
+      "properties": {
+        "type": {"const": "markdown"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3},
+        "text": {"type": "string", "minLength": 1, "maxLength": 20000}
+      },
+      "required": ["type", "text"]
+    },
+    "TableComponent": {
+      "description": "A table: 1 to 8 columns, at most 100 rows, each with as many cells as there are columns. Narrow screens scroll it sideways; cells never squeeze. An older app gets a row per line.",
+      "type": "object", "x-since": 3,
+      "properties": {
+        "type": {"const": "table"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3},
+        "columns": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/TableColumn"}},
+        "rows": {"type": "array", "maxItems": 100, "items": {"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 2000}}},
+        "caption": {"type": "string", "maxLength": 2000}
+      },
+      "required": ["type", "columns", "rows"]
+    },
+    "EmptyComponent": {
+      "description": "An empty state: nothing here yet, and maybe one thing to do about it. An older app gets a text and a button.",
+      "type": "object", "x-since": 3,
+      "properties": {
+        "type": {"const": "empty"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3},
+        "title": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "detail": {"type": "string", "maxLength": 2000},
+        "icon": {"$ref": "#/$defs/NavIcon"},
+        "button": {"$ref": "#/$defs/EmptyButton"},
+        "icon_color": {"$ref": "#/$defs/Color", "x-since": 6}
+      },
+      "required": ["type", "title"]
+    },
+    "LoadingComponent": {
+      "description": "Loading: the extension answers it while its data comes, then sends ui.invalidate to be drawn again. An older app gets a quiet text.",
+      "type": "object", "x-since": 3,
+      "properties": {
+        "type": {"const": "loading"},
+        "key": {"type": "string", "maxLength": 128, "x-since": 3},
+        "title": {"type": "string", "maxLength": 2000}
+      },
+      "required": ["type"]
+    },
+    "HtmlComponent": {
+      "type": "object",
+      "x-since": 4,
+      "x-assistant-only": true,
+      "description": "Assistant only: self-contained HTML. Execution requires an isolated, network-denying renderer; unsupported clients show the root fallback. Extensions never execute it.",
+      "properties": {
+        "type": {
+          "const": "html"
+        },
+        "key": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "html": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 160,
+          "maximum": 640
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "type",
+        "html"
+      ]
+    },
+    "HeaderComponent": {
+      "description": "A detail page's head: a big title, state badges, a line of facts (author, branches, time, size). An older app gets a text and a row per fact.",
+      "type": "object", "x-since": 4,
+      "properties": {
+        "type": {"const": "header"},
+        "key": {"type": "string", "maxLength": 128},
+        "title": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "subtitle": {"type": "string", "maxLength": 2000},
+        "badges": {"type": "array", "maxItems": 4, "items": {"$ref": "#/$defs/Badge"}},
+        "facts": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/Fact"}},
+        "avatar": {"$ref": "#/$defs/Avatar"}
+      },
+      "required": ["type", "title"]
+    },
+    "BreadcrumbComponent": {
+      "description": "A path (repo / src / main.go): every crumb but the last may be tapped. An older app gets one text.",
+      "type": "object", "x-since": 4,
+      "properties": {
+        "type": {"const": "breadcrumb"},
+        "key": {"type": "string", "maxLength": 128},
+        "crumbs": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"$ref": "#/$defs/Crumb"}}
+      },
+      "required": ["type", "crumbs"]
+    },
+    "FileTreeComponent": {
+      "description": "Files as a tree the app builds from their paths (a directory with one child folds into a/b/c). action opens a file (values {path}); expand loads a directory given with no entries under it (values {path}). An older app gets a row per entry.",
+      "type": "object", "x-since": 4,
+      "properties": {
+        "type": {"const": "file_tree"},
+        "key": {"type": "string", "maxLength": 128},
+        "entries": {"type": "array", "maxItems": 3000, "items": {"$ref": "#/$defs/TreeEntry"}},
+        "selected": {"type": "string", "maxLength": 4096},
+        "action": {"$ref": "#/$defs/Action"},
+        "expand": {"$ref": "#/$defs/Action"}
+      },
+      "required": ["type", "entries"]
+    },
+    "CodeComponent": {
+      "description": "A file's content: line numbers, the app's own syntax highlighting (language, else guessed from path), no wrapping. truncated with load: the rest comes from load (values {path, from: the next line}). An older app gets a code block.",
+      "type": "object", "x-since": 4,
+      "properties": {
+        "type": {"const": "code"},
+        "key": {"type": "string", "maxLength": 128},
+        "path": {"type": "string", "maxLength": 4096},
+        "language": {"type": "string", "maxLength": 64},
+        "text": {"type": "string", "maxLength": 200000},
+        "start_line": {"type": "integer", "minimum": 1},
+        "highlight": {"$ref": "#/$defs/LineRange"},
+        "truncated": {"type": "boolean"},
+        "load": {"$ref": "#/$defs/Action"},
+        "line_url": {"type": "string", "maxLength": 4096, "x-since": 5,
+          "description": "An https link to lines of this file on its site, {start} and {end} standing for the lines (…/blob/<sha>/a.go#L{start}-L{end})."}
+      },
+      "required": ["type", "text"]
+    },
+    "DiffComponent": {
+      "description": "One file's diff: hunks of lines each starting with ' ', '+', '-' or '\\'; unified or side by side is the app's choice. threads are inline comments at their lines; comment adds one (values {path, side, line, start_line?, body}); expand shows hidden lines between hunks (values {path, hunk, direction: up, down or all}); collapsed, or without hunks, it shows a button calling load (values {path}). An older app gets a code block.",
+      "type": "object", "x-since": 4,
+      "properties": {
+        "type": {"const": "diff"},
+        "key": {"type": "string", "maxLength": 128},
+        "path": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "old_path": {"type": "string", "maxLength": 4096},
+        "status": {"$ref": "#/$defs/FileStatus"},
+        "language": {"type": "string", "maxLength": 64},
+        "additions": {"type": "integer", "minimum": 0},
+        "deletions": {"type": "integer", "minimum": 0},
+        "binary": {"type": "boolean"},
+        "collapsed": {"type": "boolean"},
+        "hunks": {"type": "array", "maxItems": 2000, "items": {"$ref": "#/$defs/Hunk"}},
+        "threads": {"type": "array", "maxItems": 500, "items": {"$ref": "#/$defs/Thread"}},
+        "load": {"$ref": "#/$defs/Action"},
+        "expand": {"$ref": "#/$defs/Action"},
+        "comment": {"$ref": "#/$defs/Action"},
+        "context": {"$ref": "#/$defs/Action", "x-since": 5,
+          "description": "Fetch hidden lines of the file (UI version 5): values {path, side: new or old, from, to: a line or end}; the extension answers with lines (ActionResult.lines), the page is not drawn again."},
+        "viewed": {"type": "boolean", "x-since": 5, "description": "The user has marked this file viewed."},
+        "mark_viewed": {"$ref": "#/$defs/Action", "x-since": 5,
+          "description": "Mark the file viewed or not: values {path, viewed: true or false}. Without it the app keeps viewed on the device, by path and revision."},
+        "revision": {"type": "string", "maxLength": 256, "x-since": 5, "description": "What this file's change is (a blob id): a viewed mark kept on the device holds for it only."},
+        "generated": {"type": "boolean", "x-since": 5, "description": "A generated file or a lockfile: folded at first."},
+        "similarity": {"type": "integer", "minimum": 0, "maximum": 100, "x-since": 5, "description": "How alike a renamed file is to its old one, in percent."},
+        "draft": {"$ref": "#/$defs/Action", "x-since": 5,
+          "description": "Add a comment to the pending review instead of sending it alone: values as comment's."},
+        "suggestions": {"type": "boolean", "x-since": 5, "description": "The extension takes ```suggestion blocks in comments."}
+      },
+      "required": ["type", "path"]
+    },
+    "CommentThreadComponent": {
+      "description": "A discussion: comments in order (an event is drawn as a quiet line), and a reply box when reply is set (values {body}). An older app gets a row and a text per comment.",
+      "type": "object", "x-since": 4,
+      "properties": {
+        "type": {"const": "comment_thread"},
+        "key": {"type": "string", "maxLength": 128},
+        "title": {"type": "string", "maxLength": 2000},
+        "comments": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/Comment"}},
+        "resolved": {"type": "boolean"},
+        "reply": {"$ref": "#/$defs/Action"}
+      },
+      "required": ["type", "comments"]
+    },
+    "ComposerComponent": {
+      "description": "A multi-line input (Markdown) with a few buttons (comment, approve, request changes, merge): the one tapped sends the text as name, with the page's fields. An older app gets a field and a button each.",
+      "type": "object", "x-since": 4,
+      "properties": {
+        "type": {"const": "composer"},
+        "key": {"type": "string", "maxLength": 128},
+        "name": {"type": "string", "minLength": 1},
+        "placeholder": {"type": "string", "maxLength": 2000},
+        "value": {"type": "string", "maxLength": 2000},
+        "buttons": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"$ref": "#/$defs/ComposerButton"}}
+      },
+      "required": ["type", "name", "buttons"]
+    },
+    "ImageComponent": {
+      "description": "A picture with an optional caption; tapping it shows it full screen unless no_zoom. A ref is the extension's own picture (a camera, a map) fetched through the hub. An older app gets a row with a thumbnail (url) or a line of text (ref).",
+      "type": "object", "x-since": 6,
+      "properties": {
+        "type": {"const": "image"},
+        "key": {"type": "string", "maxLength": 128},
+        "src": {"$ref": "#/$defs/ImageSource"},
+        "alt": {"type": "string", "minLength": 1, "maxLength": 200, "description": "Read out, and shown when the picture does not load."},
+        "caption": {"type": "string", "maxLength": 2000},
+        "aspect": {"$ref": "#/$defs/ImageAspect"},
+        "fit": {"$ref": "#/$defs/ImageFit"},
+        "no_zoom": {"type": "boolean", "description": "Tapping does nothing (else it shows the picture full screen)."}
+      },
+      "required": ["type", "src", "alt"]
+    },
+    "GridComponent": {
+      "description": "Tiles in columns that fit the width: two on a phone, more on wider screens, at most max_columns (4 when absent). Each tile counts as a component of the page. An older app gets a row per tile.",
+      "type": "object", "x-since": 6,
+      "properties": {
+        "type": {"const": "grid"},
+        "key": {"type": "string", "maxLength": 128},
+        "tiles": {"type": "array", "minItems": 1, "maxItems": 60, "items": {"$ref": "#/$defs/Tile"}},
+        "max_columns": {"type": "integer", "minimum": 1, "maximum": 6}
+      },
+      "required": ["type", "tiles"]
+    },
+    "CarouselComponent": {
+      "description": "Tiles in one line that scrolls sideways: cameras, rooms, a watchlist. Each tile counts as a component of the page. An older app gets a text (the title) and a row per tile.",
+      "type": "object", "x-since": 6,
+      "properties": {
+        "type": {"const": "carousel"},
+        "key": {"type": "string", "maxLength": 128},
+        "title": {"type": "string", "maxLength": 2000},
+        "tiles": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"$ref": "#/$defs/Tile"}},
+        "width": {"$ref": "#/$defs/TileWidth"}
+      },
+      "required": ["type", "tiles"]
+    },
+    "ImageSource": {
+      "description": "Where a picture comes from (UI version 6): an https url the app loads without credentials, or a ref the extension serves itself (ui.image) through the hub; exactly one. path is written by the hub only, for a ref: its own address, which the app loads with its device credentials. An extension that writes path is refused.",
+      "type": "object",
+      "properties": {
+        "url": {"type": "string", "pattern": "^https://[^/?#]+", "maxLength": 4096},
+        "ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "path": {"type": "string", "pattern": "^/api/v1/extensions/[^/]+/-/image/[A-Za-z0-9_.-]+$", "maxLength": 2048},
+        "width": {"type": "integer", "minimum": 1, "maximum": 8192},
+        "height": {"type": "integer", "minimum": 1, "maximum": 8192}
+      }
+    },
+    "ImageAspect": {"description": "square 1:1, landscape 4:3 (the default), wide 16:9, portrait 3:4, auto from src's width and height (4:3 until the picture comes).", "type": "string", "enum": ["square", "landscape", "wide", "portrait", "auto"]},
+    "ImageFit": {"description": "fill crops to fill the frame (the default); fit shows all of it.", "type": "string", "enum": ["fill", "fit"]},
+    "RowControlKind": {"type": "string", "enum": ["switch", "slider", "stepper"]},
+    "RowControl": {
+      "description": "A control in a row or a tile (UI version 6). Changing it calls ui.action with action and values {name: the new value} (a switch \"true\" or \"false\", a slider and a stepper the number). The app shows the new value at once and puts back the old one if the action fails. A slider sends when the finger lifts, a stepper 0.6 s after the last tap.",
+      "type": "object",
+      "properties": {
+        "kind": {"$ref": "#/$defs/RowControlKind"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 128},
+        "on": {"type": "boolean", "description": "switch: on or off."},
+        "value": {"type": "number", "x-go-pointer": true, "description": "slider, stepper: the value now."},
+        "min": {"type": "number", "x-go-pointer": true},
+        "max": {"type": "number", "x-go-pointer": true},
+        "step": {"type": "number", "x-go-pointer": true, "description": "More than 0 (checked by the hub); a slider's is (max - min) / 100 when absent."},
+        "unit": {"type": "string", "maxLength": 8},
+        "display": {"type": "string", "maxLength": 20, "description": "How to write the value (\"22.5 °C\"); else the number and unit."},
+        "disabled": {"type": "boolean"},
+        "action": {"$ref": "#/$defs/Action"}
+      },
+      "required": ["kind", "name", "action"]
+    },
+    "RowAction": {
+      "description": "One of a row's or a tile's extra actions (UI version 6): in its menu (long press, right click, the … button) and, with swipe, under a swipe from the trailing edge. confirm and push work as on any action; a destructive one has confirm.",
+      "type": "object",
+      "properties": {
+        "title": {"type": "string", "minLength": 1, "maxLength": 20},
+        "icon": {"$ref": "#/$defs/NavIcon"},
+        "role": {"$ref": "#/$defs/ButtonRole"},
+        "swipe": {"type": "boolean", "description": "Also under a swipe. At most two of a row's actions."},
+        "action": {"$ref": "#/$defs/Action"}
+      },
+      "required": ["title", "action"]
+    },
+    "Spark": {
+      "description": "A small trend line inside a row, a metric, a stat or a tile (UI version 6): values only, no axes. Without color or tone, the app's quiet ink.",
+      "type": "object",
+      "properties": {
+        "values": {"type": "array", "minItems": 2, "maxItems": 60, "items": {"type": "number"}},
+        "color": {"$ref": "#/$defs/Color"},
+        "tone": {"$ref": "#/$defs/Tone"},
+        "fill": {"type": "boolean", "description": "Shade under the line."}
+      },
+      "required": ["values"]
+    },
+    "TileWidth": {"description": "A carousel's tiles: narrow about 140pt (scenes), regular about 200pt (the default; rooms), wide about 80% of the screen (camera pictures).", "type": "string", "enum": ["narrow", "regular", "wide"]},
+    "Tile": {
+      "description": "A tile of a grid or a carousel (UI version 6): an icon or a picture, a title, a state line, a value; tapping does its action. active marks a tile that is on (a scene running, a light on) in its color.",
+      "type": "object",
+      "properties": {
+        "key": {"type": "string", "maxLength": 128},
+        "title": {"type": "string", "minLength": 1, "maxLength": 40},
+        "subtitle": {"type": "string", "maxLength": 80},
+        "value": {"type": "string", "maxLength": 40},
+        "icon": {"$ref": "#/$defs/NavIcon", "description": "At most one of icon and image."},
+        "image": {"$ref": "#/$defs/ImageSource"},
+        "color": {"$ref": "#/$defs/Color"},
+        "badge": {"$ref": "#/$defs/Badge"},
+        "active": {"type": "boolean"},
+        "spark": {"$ref": "#/$defs/Spark"},
+        "control": {"$ref": "#/$defs/RowControl", "description": "A switch only; the tile then has a key."},
+        "actions": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"$ref": "#/$defs/RowAction"}},
+        "action": {"$ref": "#/$defs/Action"}
+      },
+      "required": ["title"]
+    },
+    "Layout": {
+      "description": "stack: sections one under another. split: on a wide screen the side pane's sections in a column at the start, the rest beside it, each scrolling on its own; on a narrow one the side pane folds into a bar on top that opens as a sheet.",
+      "type": "string", "enum": ["stack", "split"]
+    },
+    "Pane": {"description": "Where a section of a split view goes.", "type": "string", "enum": ["main", "side"]},
+    "FileStatus": {"type": "string", "enum": ["added", "modified", "deleted", "renamed"]},
+    "DiffSide": {"type": "string", "enum": ["old", "new"]},
+    "Tabs": {
+      "description": "Tabs on top of the page (UI version 4): choosing calls ui.action with action and values {name: the value} (and the search's q). An older app gets a segmented, or buttons.",
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "value": {"type": "string", "maxLength": 2000},
+        "items": {"type": "array", "minItems": 2, "maxItems": 8, "items": {"$ref": "#/$defs/Tab"}},
+        "action": {"$ref": "#/$defs/Action"}
+      },
+      "required": ["name", "value", "items", "action"]
+    },
+    "Tab": {
+      "type": "object",
+      "properties": {
+        "value": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "title": {"type": "string", "maxLength": 40},
+        "badge": {"type": "string", "maxLength": 8}
+      },
+      "required": ["value"]
+    },
+    "Fact": {
+      "description": "A label and its value in a header (Author · someone).",
+      "type": "object",
+      "properties": {
+        "label": {"type": "string", "maxLength": 200},
+        "value": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "icon": {"$ref": "#/$defs/NavIcon"}
+      },
+      "required": ["value"]
+    },
+    "Crumb": {
+      "type": "object",
+      "properties": {
+        "title": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "action": {"$ref": "#/$defs/Action"}
+      },
+      "required": ["title"]
+    },
+    "TreeEntry": {
+      "description": "A file (or a directory, kind dir) by its whole path from the root, / between names.",
+      "type": "object",
+      "properties": {
+        "path": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "kind": {"$ref": "#/$defs/TreeEntryKind"},
+        "status": {"$ref": "#/$defs/FileStatus"},
+        "additions": {"type": "integer", "minimum": 0},
+        "deletions": {"type": "integer", "minimum": 0},
+        "comments": {"type": "integer", "minimum": 0},
+        "badge": {"$ref": "#/$defs/Badge"},
+        "viewed": {"type": "boolean", "x-since": 5},
+        "generated": {"type": "boolean", "x-since": 5}
+      },
+      "required": ["path"]
+    },
+    "TreeEntryKind": {"type": "string", "enum": ["file", "dir"]},
+    "LineRange": {
+      "type": "object",
+      "properties": {
+        "start": {"type": "integer", "minimum": 1},
+        "end": {"type": "integer", "minimum": 1}
+      },
+      "required": ["start", "end"]
+    },
+    "Hunk": {
+      "description": "A run of a diff: where it starts in the old and the new file, and its lines (' ' both, '+' new, '-' old, '\\' a note such as no newline at end of file).",
+      "type": "object",
+      "properties": {
+        "header": {"type": "string", "maxLength": 2000},
+        "old_start": {"type": "integer", "minimum": 0},
+        "new_start": {"type": "integer", "minimum": 0},
+        "lines": {"type": "array", "maxItems": 20000, "items": {"type": "string", "maxLength": 20000}}
+      },
+      "required": ["old_start", "new_start", "lines"]
+    },
+    "Thread": {
+      "description": "Inline comments at a line of a diff: line (and start_line for a range) on the side's numbering.",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "maxLength": 256},
+        "side": {"$ref": "#/$defs/DiffSide"},
+        "line": {"type": "integer", "minimum": 1},
+        "start_line": {"type": "integer", "minimum": 1},
+        "resolved": {"type": "boolean"},
+        "outdated": {"type": "boolean"},
+        "comments": {"type": "array", "minItems": 1, "maxItems": 200, "items": {"$ref": "#/$defs/Comment"}},
+        "reply": {"$ref": "#/$defs/Action"},
+        "pending": {"type": "boolean", "x-since": 5, "description": "A draft of the pending review, not sent yet."},
+        "resolve": {"$ref": "#/$defs/Action", "x-since": 5, "description": "Resolve or reopen: values {thread: id, resolved: true or false}."}
+      },
+      "required": ["side", "line", "comments"]
+    },
+    "Comment": {
+      "description": "A comment: its author, when (the app draws it relative), a body in the markdown subset, a badge (Approved). An event is a quiet line (merged, pushed two commits).",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "maxLength": 256},
+        "author": {"type": "string", "minLength": 1, "maxLength": 200},
+        "avatar": {"$ref": "#/$defs/Avatar"},
+        "at": {"type": "string", "format": "date-time"},
+        "body": {"type": "string", "maxLength": 20000},
+        "badge": {"$ref": "#/$defs/Badge"},
+        "event": {"type": "boolean"}
+      },
+      "required": ["author"]
+    },
+    "ComposerButton": {
+      "type": "object",
+      "properties": {
+        "title": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "action": {"$ref": "#/$defs/Action"},
+        "tone": {"$ref": "#/$defs/Tone"}
+      },
+      "required": ["title", "action"]
+    },
+    "AssistantView": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "conversation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "x-go-type": "int64"
+        },
+        "view": {
+          "$ref": "#/$defs/View"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "conversation",
+        "version",
+        "view",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "ViewAction": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "page": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "values": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "client_msg_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "status": {
+          "$ref": "#/$defs/ViewActionStatus"
+        },
+        "revision": {"type": "integer", "minimum": 1, "maximum": 9007199254740991, "x-go-type": "int64"},
+        "error": {"type": "string", "maxLength": 2000},
+        "updated_at": {"type": "string", "format": "date-time"},
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "kind": {"$ref": "#/$defs/ViewActionKind", "description": "Absent or action: a declared Action (action is its id). html: an HTML bridge reply (action is the html component's key, text the confirmed reply)."},
+        "version": {"type": "integer", "minimum": 1, "maximum": 9007199254740991, "x-go-type": "int64", "description": "The card version the user saw and confirmed when this was committed; absent on records committed before #2019."},
+        "text": {"type": "string", "maxLength": 2000, "description": "kind html only: the reply text the user confirmed."}
+      },
+      "required": [
+        "key",
+        "action",
+        "client_msg_id",
+        "status",
+        "at"
+      ]
+    },
+    "ViewActionStatus": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "sent",
+        "failed"
+      ]
+    },
+    "ViewActionKind": {
+      "type": "string",
+      "enum": ["action", "html"]
+    },
+    "ViewActionInput": {
+      "description": "The body of POST /api/v1/assistant/conversations/{id}/views/{key}/actions. The reply text and form definition are read from the stored View, never from the client.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action": {"type": "string", "minLength": 1, "maxLength": 128, "description": "A declared reply action's id."},
+        "page": {"type": "string", "maxLength": 64, "description": "The named page the action is on; absent for the root page."},
+        "values": {"type": "object", "additionalProperties": {"type": "string", "maxLength": 2000}, "description": "The fields this action submits, by name."},
+        "client_msg_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "confirmed": {"type": "boolean", "description": "The user confirmed the action's confirm prompt natively."},
+        "expected_version": {"type": "integer", "minimum": 1, "maximum": 9007199254740991, "x-go-type": "int64", "description": "The card version shown (and confirmed) to the user. Required when the action has confirm; a different stored version answers 409 view_changed."}
+      },
+      "required": ["action", "client_msg_id"]
+    },
+    "AssistantHTMLActionKind": {
+      "type": "string",
+      "enum": ["reply", "open"]
+    },
+    "AssistantHTMLActionInput": {
+      "description": "The body of POST /api/v1/assistant/conversations/{id}/views/{key}/html-actions: a persona.reply / persona.open call of a keyed html component, after the user confirmed it natively.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"$ref": "#/$defs/AssistantHTMLActionKind"},
+        "component_key": {"type": "string", "minLength": 1, "maxLength": 128, "description": "The key of the html component on that page of the stored card."},
+        "page": {"type": "string", "maxLength": 64, "description": "The named page the component is on; absent for the root page."},
+        "expected_version": {"type": "integer", "minimum": 1, "maximum": 9007199254740991, "x-go-type": "int64", "description": "The card version that ran the HTML and was shown in the confirmation."},
+        "text": {"type": "string", "minLength": 1, "maxLength": 2000, "description": "reply only: the text shown in full in the confirmation."},
+        "url": {"type": "string", "minLength": 1, "maxLength": 2048, "description": "open only: an https or supported persona:// target."},
+        "client_msg_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "confirmed": {"const": true, "type": "boolean", "description": "Always true: the call was confirmed natively, outside the HTML."}
+      },
+      "required": ["kind", "component_key", "expected_version", "client_msg_id", "confirmed"]
+    },
+    "AssistantHTMLOpenResult": {
+      "description": "What an html-actions open answers: the validated target to open inside the app, and the card version it was checked against.",
+      "type": "object",
+      "properties": {
+        "open": {"type": "string", "minLength": 1},
+        "version": {"type": "integer", "minimum": 1, "maximum": 9007199254740991, "x-go-type": "int64"}
+      },
+      "required": ["open", "version"]
+    },
+    "ViewChangedError": {
+      "description": "409 code view_changed: the stored card is not the version the user saw. Refresh, keep the draft and confirm again; never resubmit with the new version automatically.",
+      "type": "object",
+      "properties": {
+        "error": {"type": "string"},
+        "code": {"const": "view_changed", "type": "string"},
+        "version": {"type": "integer", "minimum": 1, "maximum": 9007199254740991, "x-go-type": "int64", "description": "The current stored version."},
+        "view": {"$ref": "#/$defs/AssistantView", "description": "The current card, as feed.views carries it (a transcript card: id is its key, version 1)."}
+      },
+      "required": ["error", "code", "version"]
+    },
+    "Action": {
+      "description": "What a row, a button or a segmented does: ui.action with its id. An object, so later kinds of action (push or pop a page) are fields added here.",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "confirm": {"type": "string", "description": "Ask the user first, in these words."},
+        "submit": {"type": "boolean", "description": "Send the page's fields as values."},
+        "reply": {"type": "string", "minLength": 1, "maxLength": 2000, "description": "Assistant only: send this text back to the same conversation. The hub reads it from the saved view, not from the client."},
+        "open": {"type": "string", "minLength": 1, "maxLength": 4096, "description": "Assistant only: an https URL or a validated persona/persona session, task, kb or file target, opened inside the app."},
+        "pop": {"type": "boolean", "description": "Assistant only: return one page within the card."},
+        "push": {"$ref": "#/$defs/Push", "x-since": 3,
+          "description": "Open a page on top of this one instead of calling ui.action (an app of UI version 3; an older one calls ui.action with id)."},
+        "values": {"type": "object", "maxProperties": 8, "additionalProperties": {"type": "string", "maxLength": 2000}, "x-since": 4,
+          "description": "Values the action carries (UI version 4): sent with the page's and the component's values, these winning on a name they share. An older app sends none."}
+      },
+      "required": ["id"]
+    },
+    "Push": {
+      "description": "A page pushed on the navigation stack: ui.render of the extension's ui (this one when empty; a full page: extension_page, plugin_page or nav_page) with state. title is shown until the view comes.",
+      "type": "object",
+      "properties": {
+        "ui": {"type": "string", "maxLength": 64},
+        "page": {"type": "string", "minLength": 1, "maxLength": 64, "description": "Assistant only: a page in the root View.pages. Never combined with ui or state."},
+        "state": {"type": "string"},
+        "title": {"type": "string", "maxLength": 2000}
+      }
+    },
+    "Search": {
+      "description": "A search box on top of the page (UI version 3): the app calls ui.action with action and values {\"q\": the text}, 0.3 s after the user stops typing.",
+      "type": "object",
+      "properties": {
+        "placeholder": {"type": "string", "maxLength": 2000},
+        "value": {"type": "string", "maxLength": 2000},
+        "action": {"$ref": "#/$defs/Action"}
+      },
+      "required": ["action"]
+    },
+    "Filter": {
+      "description": "A drop-down beside the search box (UI version 3): choosing calls ui.action with action and values {name: the value} (and the search's q).",
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "maxLength": 2000},
+        "choices": {"type": "array", "minItems": 2, "maxItems": 100, "items": {"$ref": "#/$defs/Choice"}},
+        "value": {"type": "string", "maxLength": 2000},
+        "action": {"$ref": "#/$defs/Action"}
+      },
+      "required": ["name", "choices", "value", "action"]
+    },
+    "More": {
+      "description": "A section's last row, Load More (UI version 3): reaching it (or tapping it) calls ui.action with action once; the extension answers the whole view, longer.",
+      "type": "object",
+      "properties": {
+        "title": {"type": "string", "maxLength": 2000},
+        "action": {"$ref": "#/$defs/Action"}
+      },
+      "required": ["action"]
+    },
+    "Avatar": {
+      "description": "A person's or a chat's picture: an https image, else up to two characters drawn as the app's initials avatar.",
+      "type": "object",
+      "properties": {
+        "url": {"type": "string", "pattern": "^https://[^/?#]+"},
+        "text": {"type": "string", "maxLength": 2},
+        "ref": {"type": "string", "minLength": 1, "maxLength": 256, "x-since": 6, "description": "The extension's own picture (ui.image) through the hub, in place of url."},
+        "path": {"type": "string", "pattern": "^/api/v1/extensions/[^/]+/-/image/[A-Za-z0-9_.-]+$", "maxLength": 2048, "x-since": 6, "description": "Written by the hub only, for a ref."}
+      }
+    },
+    "Thumbnail": {
+      "description": "A small picture at the row's start: an https image the app loads without any credentials, or (UI version 6) a ref the extension serves (ui.image) through the hub; exactly one of url and ref.",
+      "type": "object",
+      "properties": {
+        "url": {"type": "string", "pattern": "^https://[^/?#]+"},
+        "aspect": {"$ref": "#/$defs/ThumbnailAspect"},
+        "ref": {"type": "string", "minLength": 1, "maxLength": 256, "x-since": 6},
+        "path": {"type": "string", "pattern": "^/api/v1/extensions/[^/]+/-/image/[A-Za-z0-9_.-]+$", "maxLength": 2048, "x-since": 6, "description": "Written by the hub only, for a ref."}
+      }
+    },
+    "ThumbnailAspect": {"type": "string", "enum": ["square", "wide"]},
+    "TableAlign": {"type": "string", "enum": ["start", "end"]},
+    "TableColumn": {
+      "type": "object",
+      "properties": {
+        "title": {"type": "string", "maxLength": 200},
+        "align": {"$ref": "#/$defs/TableAlign"}
+      },
+      "required": ["title"]
+    },
+    "EmptyButton": {
+      "description": "An empty state's one button.",
+      "type": "object",
+      "properties": {
+        "title": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "action": {"$ref": "#/$defs/Action"}
+      },
+      "required": ["title", "action"]
+    },
+    "Badge": {
+      "type": "object",
+      "properties": {
+        "text": {"type": "string", "maxLength": 2000},
+        "tone": {"$ref": "#/$defs/Tone"},
+        "color": {"$ref": "#/$defs/Color", "x-since": 6}
+      },
+      "required": ["text"]
+    },
+    "Choice": {
+      "type": "object",
+      "properties": {
+        "value": {"type": "string"},
+        "title": {"type": "string"}
+      },
+      "required": ["value"]
+    },
+    "ChartSeries": {
+      "description": "One line, or one color of bars. No tone and no color: the app's own colors, in order. At most 120 points (240 for a candlestick, checked by the hub).",
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "maxLength": 40},
+        "tone": {"$ref": "#/$defs/Tone"},
+        "points": {"type": "array", "minItems": 1, "maxItems": 240, "items": {"$ref": "#/$defs/ChartPoint"}},
+        "color": {"$ref": "#/$defs/Color", "x-since": 6}
+      },
+      "required": ["points"]
+    },
+    "ChartPoint": {
+      "description": "A value at a label (a day, a model); display is how to write it (\"¥1.20\"), else the app writes value with the unit.",
+      "type": "object",
+      "properties": {
+        "label": {"type": "string", "maxLength": 40},
+        "value": {"type": "number"},
+        "display": {"type": "string", "maxLength": 40},
+        "open": {"type": "number", "x-go-pointer": true, "x-since": 6},
+        "high": {"type": "number", "x-go-pointer": true, "x-since": 6},
+        "low": {"type": "number", "x-go-pointer": true, "x-since": 6},
+        "close": {"type": "number", "x-go-pointer": true, "x-since": 6},
+        "volume": {"type": "number", "minimum": 0, "x-go-pointer": true, "x-since": 6}
+      },
+      "required": ["label", "value"]
+    },
+    "Stat": {
+      "type": "object",
+      "properties": {
+        "label": {"type": "string", "minLength": 1},
+        "value": {"type": "string", "minLength": 1},
+        "detail": {"type": "string"},
+        "tone": {"$ref": "#/$defs/Tone"},
+        "spark": {"$ref": "#/$defs/Spark", "x-since": 6}
+      },
+      "required": ["label", "value"]
+    },
+    "ActionResult": {
+      "description": "What ui.action answers: a new view, a short message, an https link to open, a page to push or to pop (UI version 3), or nothing (draw again).",
+      "type": "object",
+      "properties": {
+        "view": {"$ref": "#/$defs/View"},
+        "toast": {"type": "string"},
+        "open_url": {"type": "string"},
+        "push": {"$ref": "#/$defs/Push", "x-since": 3, "description": "Then open this page on top (after a submit: list, detail, edit)."},
+        "pop": {"type": "boolean", "x-since": 3, "description": "Then go back a page; the page below is drawn again."},
+        "lines": {"$ref": "#/$defs/FileLines", "x-since": 5, "description": "Lines of a file a diff's context asked for: the page is not drawn again."},
+        "items": {"type": "array", "maxItems": 50, "items": {"$ref": "#/$defs/Component"}, "x-since": 5,
+          "description": "Components to put in place of those with the same key on the page (each has a key): the rest is not drawn again."}
+      }
+    },
+    "FileLines": {
+      "description": "Lines of one side of a file from start (1 the first), as many as the extension has at hand (all of it, say); total is how many the file has.",
+      "type": "object",
+      "properties": {
+        "path": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "side": {"$ref": "#/$defs/DiffSide"},
+        "start": {"type": "integer", "minimum": 1},
+        "lines": {"type": "array", "maxItems": 20000, "items": {"type": "string", "maxLength": 20000}},
+        "total": {"type": "integer", "minimum": 0}
+      },
+      "required": ["path", "start", "lines"]
+    },
+    "Review": {
+      "description": "The pending review (UI version 5): a bar at the page's foot saying how many drafts there are, a summary box (name) and buttons (comment, approve, request changes) that send them all, discard throws them away. An older app gets a text and a composer on top.",
+      "type": "object",
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "name": {"type": "string", "minLength": 1},
+        "placeholder": {"type": "string", "maxLength": 2000},
+        "buttons": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"$ref": "#/$defs/ComposerButton"}},
+        "discard": {"$ref": "#/$defs/Action"}
+      },
+      "required": ["count", "name", "buttons"]
+    },
+    "PersonaCardKind": {"type": "string", "description": "ring: one day's total and its parts (a donut); stacked_bar: parts side by side to compare (days, people).", "enum": ["stat", "stacked_bar", "line", "bar", "ring"]},
+    "PersonaCard": {
+      "description": "The assistant's ```persona-card block (#886): one JSON object. Joins the components in #1850; this form keeps drawing.",
+      "type": "object",
+      "properties": {
+        "type": {"$ref": "#/$defs/PersonaCardKind"},
+        "title": {"type": "string"},
+        "subtitle": {"type": "string"},
+        "value": {"type": "number", "x-go-pointer": true},
+        "unit": {"type": "string"},
+        "note": {"type": "string"},
+        "total": {"$ref": "#/$defs/CardAmount"},
+        "segments": {"type": "array", "items": {"$ref": "#/$defs/CardPart"}},
+        "rest": {"$ref": "#/$defs/CardPart"},
+        "points": {"type": "array", "items": {"$ref": "#/$defs/CardPart"}}
+      },
+      "required": ["type"]
+    },
+    "CardAmount": {
+      "type": "object",
+      "properties": {"value": {"type": "number"}, "unit": {"type": "string"}},
+      "required": ["value"]
+    },
+    "CardPart": {
+      "type": "object",
+      "properties": {"label": {"type": "string"}, "value": {"type": "number"}, "note": {"type": "string"}},
+      "required": ["label", "value"]
+    }
+  }
+}

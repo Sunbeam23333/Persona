@@ -1,0 +1,29 @@
+// the config the hub runs with
+{
+  "listen": ":18660",
+  "token": "<generated token>",
+  "public_url": "http://<host>:18660",
+  "database_url": "postgres://persona:secret@127.0.0.1:18661/persona?sslmode=disable",
+  "machines": [
+    {
+      "id": "<host>",
+      "name": "<host>",
+      "kind": "local",
+      "icon": "server"
+    }
+  ],
+  "assistant": {},
+  "notify": {},
+  "public": {},
+  "security": {},
+  "admin": {},
+  "tailcat": {},
+  "mesh": {},
+  "personas": {}
+}
+// hub.json after loading
+{
+  "database_url": "postgres://persona:secret@127.0.0.1:18661/persona?sslmode=disable",
+  "token": "<generated token>"
+}
+

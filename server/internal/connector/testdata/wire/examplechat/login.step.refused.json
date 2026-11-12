@@ -1,0 +1,17 @@
+{
+  "step": "connect",
+  "fields": [
+    {
+      "name": "base_url",
+      "label": "服务地址",
+      "placeholder": "https://chat.example.com"
+    },
+    {
+      "name": "app_key",
+      "label": "应用密钥",
+      "secret": true,
+      "placeholder": "example-key"
+    }
+  ],
+  "error": "应用密钥无效或已被撤销。"
+}

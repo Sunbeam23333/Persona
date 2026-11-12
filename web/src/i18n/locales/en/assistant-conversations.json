@@ -1,0 +1,19 @@
+{
+  "untitled": "New chat",
+  "earlier": "Earlier",
+  "today": "Today",
+  "yesterday": "Yesterday",
+  "last_7_days": "Previous 7 days",
+  "origin_inbox": "Inbox",
+  "origin_task": "Scheduled",
+  "origin_lark_agent": "Lark /agent",
+  "origin_spawned": "From a chat",
+  "origin_extension": "Extensions",
+  "origin_other": "Other",
+  "origin_all": "All",
+  "origin_mine": "Mine",
+  "origin_filter": "Filter by source",
+  "from_extension": "From an extension",
+  "background_supervisor": "Background supervisor",
+  "built_in": "Built-in"
+}

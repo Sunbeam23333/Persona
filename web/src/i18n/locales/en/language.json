@@ -1,0 +1,6 @@
+{
+  "label": "Language",
+  "system": "Match system",
+  "system_detail": "Match system ({language})",
+  "hint": "Match system uses your browser's first preferred language when a translation is available; otherwise it uses English. Switching reloads this page and changes the hub's notifications and assistant replies too."
+}

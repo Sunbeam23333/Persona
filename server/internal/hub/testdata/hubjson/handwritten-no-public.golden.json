@@ -1,0 +1,43 @@
+// the config the hub runs with
+{
+  "listen": ":18660",
+  "token": "handwritten-token",
+  "public_url": "http://hub.example.com:18660",
+  "database_url": "postgres://persona:secret@127.0.0.1:18661/persona?sslmode=disable",
+  "machines": [
+    {
+      "id": "box",
+      "name": "box",
+      "kind": "local",
+      "icon": "server"
+    },
+    {
+      "id": "laptop",
+      "name": "Laptop",
+      "kind": "link"
+    }
+  ],
+  "assistant": {},
+  "notify": {},
+  "public": {},
+  "security": {},
+  "admin": {
+    "access": "lan"
+  },
+  "tailcat": {},
+  "mesh": {},
+  "personas": {}
+}
+// hub.json after loading
+{
+  "listen": ":18660",
+  "token": "handwritten-token",
+  "public_url": "http://hub.example.com:18660",
+  "database_url": "postgres://persona:secret@127.0.0.1:18661/persona?sslmode=disable",
+  "machines": [
+    {"id": "box", "name": "box", "kind": "local", "icon": "server"},
+    {"id": "laptop", "name": "Laptop", "kind": "link"}
+  ],
+  "admin": {"access": "lan"}
+}
+
