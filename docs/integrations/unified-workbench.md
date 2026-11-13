@@ -213,6 +213,45 @@ the same file and inspect the Git diff afterwards.
 
 ## Acceptance and remaining setup
 
+### Opt-in cache and tool-call probe
+
+`scripts/workbench/cache_tools.py` is a Python standard-library probe for compatible Chat Completions gateways.
+It does not launch an Agent or modify Persona configuration. Without `--run`, it prints help and makes no requests.
+Keep a private JSON configuration outside tracked files, owned by the current user with mode `0600`:
+
+```json
+{
+  "CHAT_COMPLETIONS_URL": "https://gateway.example.com/v1/chat/completions",
+  "API_KEY": "<your-private-key>"
+}
+```
+
+Create a dedicated private output directory with mode `0700`, also outside tracked files, then run:
+
+```sh
+python3 scripts/workbench/cache_tools.py --run \
+  --config /absolute/private/gateway.json \
+  --output-dir /absolute/private/probe-results \
+  --model your-model-id
+```
+
+Repeat `--model` to test more than one model. `--only cache` or `--only tools` limits the test. Use `--url-key`
+and `--api-key-key` when an existing private configuration uses different field names. If the gateway requires a
+session-affinity header, supply its documented name with `--session-header`; each phase retains one generated ID
+across its requests. HTTPS verifies certificates; plaintext HTTP requires explicit `--allow-http`. Redirects,
+environment proxies and automatic retries are not used. Never put credentials on the command line.
+
+Each model uses three identical synthetic long-prefix requests, with an ephemeral `cache_control` block, followed
+by a two-request function-call roundtrip. This consumes model tokens. The only executable tool is local integer
+addition; no model-generated shell code is executed. The returned assistant message, including provider-specific
+signature fields, is preserved when sending the tool result back. A fresh receipt proves the final answer consumed
+the local tool result. Success requires a positive server-reported cache-read count on a repeat request, not just
+HTTP success or lower latency. Missing counters mean an unverified hit, not proof that caching is unsupported.
+Cache controls and token limits are gateway/model-dependent; this probe does not establish universal compatibility,
+streaming behavior, cache pricing or production Agent readiness. Reports are private and must not be committed.
+
+Offline tests: `python3 -m unittest discover -s scripts/workbench -p 'test_cache_tools.py'`.
+
 ### Opt-in live DSH acceptance
 
 `web/e2e/workbench-live.mjs` exercises a real local hub and DSH runtime. First create a private fixture root
