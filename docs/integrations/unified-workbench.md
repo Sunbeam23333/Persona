@@ -78,7 +78,10 @@ operating-system sandbox.
 
 ### DSH and compatible model gateways
 
-1. Install and authenticate DSH through its official instructions.
+1. Install DSH through its [official instructions](https://github.com/deepseek-ai/deepseek-harness) and configure
+   its chosen provider's authentication. Check DSH's own Node requirement separately from Persona's: the published
+   `@deepseek-ai/dsh@0.2.2-rc.1` requires Node 24.9 or later. A project-local installation and separate `DSH_HOME`
+   avoid changing an existing client or account profile.
 2. Configure the model in DSH. Its `openai-completions` provider takes the API root, without the final
    `/chat/completions`. A nonstandard root need not end in `/v1`. Keep the key in a local environment variable or
    DSH's secret mechanism; do not commit it.
@@ -209,6 +212,41 @@ optimistic conflict detection, not a distributed lock against every external edi
 the same file and inspect the Git diff afterwards.
 
 ## Acceptance and remaining setup
+
+### Opt-in live DSH acceptance
+
+`web/e2e/workbench-live.mjs` exercises a real local hub and DSH runtime. First create a private fixture root
+outside the hub's state directory, confirm the assistant computer, and select the connected DSH launcher.
+The existing private hub configuration supplies authentication; never put a token on the command line.
+If the node uses `PERSONA_NODE_SESSION_DIR`, also explicitly set `PERSONA_NODE_WORKSPACE_DIR` to this dedicated
+fixture root before starting the node. Otherwise the child can execute but remains outside session discovery,
+preventing completion tracking. See [isolated node configuration](../operations/config.md).
+
+```sh
+PERSONA_LIVE_ORIGIN=http://127.0.0.1:18660 \
+PERSONA_LIVE_HUB_CONFIG=/absolute/private/state/hub.json \
+PERSONA_LIVE_ROOT=/absolute/private/acceptance \
+PERSONA_LIVE_MACHINE=workbench \
+PERSONA_LIVE_RUNTIME=dsh \
+node web/e2e/workbench-live.mjs --check
+```
+
+The default check makes readiness reads only: no pairing, fixture creation or model request. After it passes,
+repeat with `--execute` to spend model tokens on one disposable task. It pairs an isolated browser, starts one
+Assistant conversation, delegates to one DSH Agent, and checks file contents, an actual test-tool result and
+transcript persistence after reload. It uses the paired browser's real API contract, not composer interaction
+automation. Chrome must be installed; `PERSONA_LIVE_BROWSER_CHANNEL` can select another Playwright channel.
+Set `PERSONA_LIVE_SCREENSHOTS=1` to retain desktop and mobile screenshots for visual review.
+
+Unexpected approval requests stop the test; it never automatically approves them. Command-approval behavior
+therefore needs separate acceptance. A ten-minute deadline and observed tool-call limit are not a server-side
+model budget. Failure cleanup interrupts only sessions proven to belong to that run, on a best-effort basis.
+Fixture instructions are not an operating-system sandbox. Results, model-generated files and an independently
+paired browser profile remain under the private fixture root; do not publish that directory.
+
+The harness's offline guard tests run with `node --test web/e2e/workbench-live.test.mjs`.
+
+### Other integrations
 
 Protocol tests use fake ACP/CLI/HTTP peers and synthetic files. They prove connector contracts and failure handling,
 not that your accounts are authenticated or that a particular model executes tools correctly. Live acceptance needs:
