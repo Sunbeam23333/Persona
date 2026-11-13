@@ -125,6 +125,7 @@ POST /api/v1/machines/{mid}/files
 POST /api/v1/machines/{mid}/files/move
 POST /api/v1/machines/{mid}/files/rename
 POST /api/v1/machines/{mid}/files/restore
+POST /api/v1/machines/{mid}/files/text
 POST /api/v1/machines/{mid}/files/trash
 POST /api/v1/machines/{mid}/git/commit
 POST /api/v1/machines/{mid}/git/pr

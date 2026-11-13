@@ -22,6 +22,13 @@ The background supervisor (`docs/assistant/unified-entry.md` "Background supervi
 
 ## Providers and execution methods
 
+This fork also accepts exact OpenAI-compatible Chat Completions and Responses request URLs in a direct API's Base URL.
+An exact URL ending in `/chat/completions` or `/responses` is used unchanged for that protocol; discovery uses its sibling
+`/models`, without inserting `/v1`. Conventional bases keep their existing `/v1` behavior. Connection checks and curl
+import use the same resolution. Chat providers may return a valid text JSON completion when streaming was requested;
+errors, refusals and missing replies are still failures. This does not add tool execution to direct API tasks or make
+them an assistant runtime. See [unified workbench](../integrations/unified-workbench.md) for the runtime/provider split.
+
 | Execution method | Used for | Constraints |
 | --- | --- | --- |
 | Direct API | Triage, assessment, translation, drafting, knowledge processing, titles | Messages, Responses, or Chat Completions; the manager reads / decrypts credentials and sends requests itself |

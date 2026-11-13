@@ -1,0 +1,9 @@
+{
+  "name": "Task supervisor",
+  "description": "Inspect an existing DSH Super-agent on one computer. Controls are off by default.",
+  "configuration": {
+    "machines": {"title": "Supervisor computer", "description": "Select the computer already running DSH Super-agent and Persona Link."},
+    "port": {"title": "Local supervisor port"},
+    "allow_control": {"title": "Allow task controls", "description": "Permit retry, stop, pause and resume. Every button still asks for confirmation.", "confirm": "Allow this extension to retry or stop tickets and pause or resume the supervisor?"}
+  }
+}

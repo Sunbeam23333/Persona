@@ -13,19 +13,25 @@ import (
 )
 
 // PERSONA_NODE_SESSION_DIR opts a second resident or stdio node into discovering
-// only its assistant's sessions. Each agent profile must be inside its own
-// PERSONA_HOME; the user's terminal hosts and global hooks stay with the primary node.
+// only its assistant's sessions, plus an explicitly opted-in development workspace.
+// Each agent profile must be inside its own PERSONA_HOME; the user's terminal hosts
+// and global hooks stay with the primary node.
 const nodeSessionDirEnv = "PERSONA_NODE_SESSION_DIR"
+const nodeWorkspaceDirEnv = "PERSONA_NODE_WORKSPACE_DIR"
 
 type nodeSessionScope struct {
-	dir    string
-	claude string
-	codex  string
+	dir       string
+	claude    string
+	codex     string
+	workspace string
 }
 
 func readNodeSessionScope(home, root string) (*nodeSessionScope, error) {
 	dir := os.Getenv(nodeSessionDirEnv)
 	if dir == "" {
+		if os.Getenv(nodeWorkspaceDirEnv) != "" {
+			return nil, fmt.Errorf("%s requires %s", nodeWorkspaceDirEnv, nodeSessionDirEnv)
+		}
 		return nil, nil
 	}
 	if !filepath.IsAbs(os.Getenv("PERSONA_HOME")) || !filepath.IsAbs(root) || sameScopePath(root, home) || sameScopePath(root, filepath.Join(home, ".persona")) || sameScopePath(root, filepath.Join(home, compat.StateDir)) {
@@ -40,7 +46,37 @@ func readNodeSessionScope(home, root string) (*nodeSessionScope, error) {
 	if sessionScopeWithin(s.dir, s.claude) || sessionScopeWithin(s.dir, s.codex) || sessionScopeWithin(s.claude, s.dir) || sessionScopeWithin(s.codex, s.dir) || sessionScopeWithin(s.claude, s.codex) || sessionScopeWithin(s.codex, s.claude) {
 		return nil, fmt.Errorf("assistant, Claude and Codex directories must be separate")
 	}
+	if workspace := os.Getenv(nodeWorkspaceDirEnv); workspace != "" {
+		if err := validateSessionWorkspace(home, root, workspace); err != nil {
+			return nil, err
+		}
+		s.workspace = workspace
+	}
 	return s, nil
+}
+
+func validateSessionWorkspace(home, root, workspace string) error {
+	invalid := func() error {
+		return fmt.Errorf("%s must be an existing canonical dedicated directory outside Persona state and agent profiles", nodeWorkspaceDirEnv)
+	}
+	if !filepath.IsAbs(workspace) || filepath.Clean(workspace) != workspace {
+		return invalid()
+	}
+	real, err := filepath.EvalSymlinks(workspace)
+	if err != nil || real != workspace {
+		return invalid()
+	}
+	info, err := os.Lstat(workspace)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || filepath.Dir(workspace) == workspace || sessionScopeWithin(workspace, home) {
+		return invalid()
+	}
+	// A parent of the state/profiles is just as broad as the profiles themselves.
+	for _, protected := range []string{root, filepath.Join(home, ".claude"), filepath.Join(home, ".codex"), filepath.Join(home, ".persona"), filepath.Join(home, compat.StateDir)} {
+		if sessionScopeWithin(protected, workspace) || sessionScopeWithin(workspace, protected) {
+			return invalid()
+		}
+	}
+	return nil
 }
 
 // Resolve existing ancestors too: a not-yet-created profile beneath a symlink
@@ -68,7 +104,12 @@ func sessionScopeWithin(root, p string) bool {
 }
 
 func (n *Node) sessionScopeAllows(cwd string) bool {
-	return n.sessionScope == nil || sessionScopeWithin(n.sessionScope.dir, cwd)
+	if n.sessionScope == nil || sessionScopeWithin(n.sessionScope.dir, cwd) {
+		return true
+	}
+	workspace := n.sessionScope.workspace
+	// Keep the configured canonical root pinned if someone replaces it with a link.
+	return workspace != "" && sessionScopePath(workspace) == workspace && sessionScopeWithin(workspace, cwd)
 }
 
 func (n *Node) scopedTranscript(path string) bool {
@@ -124,7 +165,7 @@ func (n *Node) scopedTranscriptAllows(path string) bool {
 
 func (n *Node) offlineCacheKey() string {
 	if n.sessionScope != nil {
-		return n.home + "\x00" + n.dir + "\x00" + n.sessionScope.dir
+		return n.home + "\x00" + n.dir + "\x00" + n.sessionScope.dir + "\x00" + n.sessionScope.workspace
 	}
 	return n.home
 }

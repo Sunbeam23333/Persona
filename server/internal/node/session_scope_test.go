@@ -31,6 +31,7 @@ func scopedTestNode(t *testing.T) *Node {
 	}
 	t.Setenv("PERSONA_HOME", n.dir)
 	t.Setenv(nodeSessionDirEnv, scope)
+	t.Setenv(nodeWorkspaceDirEnv, "")
 	t.Setenv("CLAUDE_CONFIG_DIR", claude)
 	t.Setenv("CODEX_HOME", codex)
 	var err error
@@ -43,6 +44,122 @@ func scopedTestNode(t *testing.T) *Node {
 	n.cdirs.scan = func() map[int]procEnv { t.Fatal("scoped node scanned the user's Claude processes"); return nil }
 	n.codices.scan = func() []codexProcess { t.Fatal("scoped node scanned the user's Codex processes"); return nil }
 	return n
+}
+
+func scopedWorkspace(t *testing.T, n *Node) string {
+	t.Helper()
+	workspace := filepath.Join(sessionScopePath(n.home), "development")
+	if err := os.Mkdir(workspace, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(nodeWorkspaceDirEnv, workspace)
+	var err error
+	n.sessionScope, err = readNodeSessionScope(n.home, n.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return workspace
+}
+
+func TestNodeSessionWorkspaceFailsClosed(t *testing.T) {
+	n := scopedTestNode(t)
+	workspace := scopedWorkspace(t, n)
+	alias := filepath.Join(sessionScopePath(n.home), "workspace-alias")
+	if err := os.Symlink(workspace, alias); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(workspace, "not-a-directory")
+	if err := os.WriteFile(file, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, profile := range []string{".claude", ".codex", ".persona"} {
+		if err := os.MkdirAll(filepath.Join(n.home, profile, "nested"), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, value := range []string{"relative", workspace + string(filepath.Separator), filepath.Dir(workspace),
+		filepath.Dir(sessionScopePath(n.home)), string(filepath.Separator), sessionScopePath(n.dir),
+		sessionScopePath(n.sessionScope.dir), sessionScopePath(n.sessionScope.claude), sessionScopePath(n.sessionScope.codex),
+		filepath.Join(workspace, "missing"), file, alias, filepath.Join(alias, "missing"),
+		filepath.Join(sessionScopePath(n.home), ".claude"), filepath.Join(sessionScopePath(n.home), ".codex", "nested"),
+		filepath.Join(sessionScopePath(n.home), ".persona", "nested")} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv(nodeWorkspaceDirEnv, value)
+			if _, err := readNodeSessionScope(n.home, n.dir); err == nil {
+				t.Fatal("unsafe workspace accepted")
+			}
+		})
+	}
+	t.Setenv(nodeSessionDirEnv, "")
+	if _, err := readNodeSessionScope(n.home, n.dir); err == nil {
+		t.Fatal("workspace without isolated node accepted")
+	}
+}
+
+func TestNodeSessionWorkspaceRuntimeInventory(t *testing.T) {
+	n := scopedTestNode(t)
+	workspace := scopedWorkspace(t, n)
+	n.runtimes = newRuntimeRegistry()
+	h := n.runtimes.add(nil)
+	h.mu.Lock()
+	h.ready, h.hello.Runtime = true, "dsh"
+	h.mu.Unlock()
+	n.runtimes.setSessions(h, []proto.Session{
+		{SessionID: "session-assistant", Agent: "dsh", Cwd: n.sessionScope.dir, Status: proto.StatusDone},
+		{SessionID: "session-child", Agent: "dsh", Cwd: filepath.Join(workspace, "fresh-task"), Status: proto.StatusDone},
+		{SessionID: "session-unrelated", Agent: "dsh", Cwd: workspace + "-other", Status: proto.StatusDone},
+	})
+	listedIDs := func() map[string]bool {
+		ids := map[string]bool{}
+		for _, row := range n.sessionList(context.Background(), false) {
+			ids[row.SessionID] = true
+		}
+		return ids
+	}
+	if got := listedIDs(); !reflect.DeepEqual(got, map[string]bool{"session-assistant": true, "session-child": true}) {
+		t.Fatalf("explicit workspace inventory: %v", got)
+	}
+	n.sessionScope.workspace = ""
+	if got := listedIDs(); !reflect.DeepEqual(got, map[string]bool{"session-assistant": true}) {
+		t.Fatalf("workspace leaked without opt-in: %v", got)
+	}
+}
+
+func TestNodeSessionWorkspaceKeepsProfilesPrivate(t *testing.T) {
+	n := scopedTestNode(t)
+	workspace := scopedWorkspace(t, n)
+	const own = "aaaaaaaa-0000-0000-0000-000000000021"
+	const external = "aaaaaaaa-0000-0000-0000-000000000022"
+	const other = "aaaaaaaa-0000-0000-0000-000000000023"
+	ownPath := scopeClaudeTranscript(t, n.sessionScope.claude, own, filepath.Join(workspace, "task"))
+	externalPath := scopeClaudeTranscript(t, filepath.Join(n.home, ".claude"), external, workspace)
+	otherPath := scopeClaudeTranscript(t, n.sessionScope.claude, other, workspace+"-other")
+	if !n.scopedTranscriptAllows(ownPath) || n.scopedTranscriptAllows(externalPath) || n.scopedTranscriptAllows(otherPath) {
+		t.Fatal("workspace opt-in changed private-profile boundaries")
+	}
+	withWorkspace := n.offlineCacheKey()
+	n.sessionScope.workspace = ""
+	if n.offlineCacheKey() == withWorkspace || n.scopedTranscriptAllows(ownPath) {
+		t.Fatal("offline cache or transcript scope retained removed workspace")
+	}
+	n.sessionScope.workspace = workspace
+	escape := filepath.Join(workspace, "escape")
+	if err := os.Symlink(n.home, escape); err != nil {
+		t.Fatal(err)
+	}
+	if n.sessionScopeAllows(filepath.Join(escape, "unrelated")) {
+		t.Fatal("workspace child symlink escaped its root")
+	}
+	moved := workspace + "-moved"
+	if err := os.Rename(workspace, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(moved, workspace); err != nil {
+		t.Fatal(err)
+	}
+	if n.sessionScopeAllows(filepath.Join(workspace, "task")) {
+		t.Fatal("replaced workspace root was not pinned")
+	}
 }
 
 func scopeClaudeTranscript(t *testing.T, profile, id, cwd string) string {

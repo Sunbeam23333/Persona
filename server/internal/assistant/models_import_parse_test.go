@@ -302,21 +302,21 @@ func TestParsePasteCurl(t *testing.T) {
 			name: "Chat Completions without /v1",
 			text: `curl https://api.example.com/chat/completions -H 'Authorization: Bearer ` + pasteKeyB + `' -d '{"model":"chat-x"}'`,
 			want: pasteResult{Format: "curl", Notes: []pasteNote{}, Drafts: []pasteDraft{{
-				Provider: withModels(pastedProvider{Kind: "api", API: "chat", BaseURL: "https://api.example.com", Auth: "bearer", APIKey: pasteKeyB}, "chat-x"),
+				Provider: withModels(pastedProvider{Kind: "api", API: "chat", BaseURL: "https://api.example.com/chat/completions", Auth: "bearer", APIKey: pasteKeyB}, "chat-x"),
 			}}},
 		},
 		{
 			name: "Chat Completions under another version prefix",
 			text: `curl "https://api.example.com/v1beta/openai/chat/completions" -H "Authorization: Bearer ` + pasteKeyB + `"`,
 			want: pasteResult{Format: "curl", Notes: []pasteNote{}, Drafts: []pasteDraft{{
-				Provider: pastedProvider{Kind: "api", API: "chat", BaseURL: "https://api.example.com/v1beta/openai", Auth: "bearer", APIKey: pasteKeyB},
+				Provider: pastedProvider{Kind: "api", API: "chat", BaseURL: "https://api.example.com/v1beta/openai/chat/completions", Auth: "bearer", APIKey: pasteKeyB},
 			}}},
 		},
 		{
 			name: "Responses without /v1",
 			text: `curl https://gw.example.com/openai/responses -H "Authorization: Bearer ` + pasteKeyB + `"`,
 			want: pasteResult{Format: "curl", Notes: []pasteNote{}, Drafts: []pasteDraft{{
-				Provider: pastedProvider{Kind: "api", API: "responses", BaseURL: "https://gw.example.com/openai", Auth: "bearer", APIKey: pasteKeyB},
+				Provider: pastedProvider{Kind: "api", API: "responses", BaseURL: "https://gw.example.com/openai/responses", Auth: "bearer", APIKey: pasteKeyB},
 			}}},
 		},
 		{

@@ -532,8 +532,18 @@ sessions whose actual working directory is inside the assistant directory; proce
 cannot add other profiles. Global hook configuration does not install or remove hooks. Built-in Persona MCP servers
 explicitly carry the node's state root, including when the agent runtime filters inherited environment variables.
 
+For a dedicated node that also runs development Agents, optionally set
+`PERSONA_NODE_WORKSPACE_DIR=/absolute/dedicated-workspaces`. This must be one existing canonical absolute directory
+outside `PERSONA_HOME`, with no overlap with the user's agent profiles. The filesystem root, home, their ancestors,
+state/profile ancestors, missing directories and symlink aliases are rejected. Keep it narrowly scoped: only sessions
+whose actual working directory is inside the assistant directory or this workspace are listed. Without this opt-in,
+Agents started outside the assistant directory are not listed and their completion cannot be tracked by the manager.
+Private-profile requirements and disabled global/process/terminal discovery are unchanged; this is not a filesystem
+sandbox or permission to read existing user histories. Set it before starting the node and verify a disposable child
+Agent appears and reports completion. Do not remove `PERSONA_NODE_SESSION_DIR` to make an outside workspace visible.
+
 `manager.json` has no `assistant.dir` setting. The manager derives its assistant directory from the node's reported
-`data_dir` and `identity.AssistantDirName(managerID)`. Verify that reported `cwd` and each new session's actual `cwd`
+`data_dir` and `identity.AssistantDirName(managerID)`. Verify that reported `cwd` and each new Assistant conversation's actual `cwd`
 resolve to `PERSONA_NODE_SESSION_DIR`; do not rely on an ignored JSON field. An internal symlink to
 `<state root>/.persona/assistant-m-abcdef` can retain assistant-directory recognition by older nodes on the same
 computer. Both the link and target must stay inside the independent root. Verify the existing node does not list the

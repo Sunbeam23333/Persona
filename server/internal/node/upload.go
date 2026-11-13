@@ -298,6 +298,9 @@ func (u *uploads) end(id string, now time.Time) (string, int64, error) {
 	if st, err := os.Stat(part); err != nil || st.Size() != up.size || up.written != up.size {
 		return "", 0, fmt.Errorf("got %d of %d bytes", up.written, up.size)
 	}
+	// Claim this upload before serializing target mutations: duplicate end/chunk calls must still fail promptly.
+	fileMutationMu.Lock()
+	defer fileMutationMu.Unlock()
 	if up.into {
 		return u.finishInto(id, up)
 	}

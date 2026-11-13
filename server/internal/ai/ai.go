@@ -175,13 +175,9 @@ func (c *Client) Chat(ctx context.Context, r Request) (Reply, error) {
 	return reply, g.done(probe, answered, err)
 }
 
-// apiEndpoint preserves deployment prefixes and accepts bases with or without /v1.
+// apiEndpoint shares endpoint resolution with provider probes and configuration imports.
 func apiEndpoint(base, path string) string {
-	base = strings.TrimRight(base, "/")
-	if !strings.HasSuffix(base, "/v1") {
-		base += "/v1"
-	}
-	return base + "/" + path
+	return aiwire.Endpoint(base, path)
 }
 
 // messages calls the Messages API; answered is whether the upstream said 200, Truncated whether the reply stopped at

@@ -58,10 +58,94 @@ func (c *Client) chatCompletions(ctx context.Context, hc *http.Client, key strin
 			}
 			return Reply{}, false, newHTTPError(resp, raw)
 		}
-		reply, err := readCompletions(resp.Body)
+		reply, err := ReadChatCompletions(resp.Body)
 		resp.Body.Close()
 		return reply, true, err
 	}
+}
+
+// ReadChatCompletions reads a text-only completion. Compatible gateways may ignore stream:true
+// and return one JSON response; probes use the same reader so they test the actual call contract.
+func ReadChatCompletions(body io.Reader) (Reply, error) {
+	const maxJSON = 8 << 20
+	reader := bufio.NewReader(body)
+	// Peek at the first non-whitespace byte without waiting for a whole buffer or consuming an SSE event.
+	for skipped := 0; skipped < maxJSON; skipped++ {
+		first, err := reader.ReadByte()
+		if err != nil {
+			return Reply{}, fmt.Errorf("ai: read completion: %w", err)
+		}
+		if first == ' ' || first == '\t' || first == '\r' || first == '\n' {
+			continue
+		}
+		if err := reader.UnreadByte(); err != nil {
+			return Reply{}, err
+		}
+		if first != '{' {
+			return readCompletions(reader)
+		}
+		raw, err := io.ReadAll(io.LimitReader(reader, int64(maxJSON-skipped)+1))
+		if err != nil {
+			return Reply{}, fmt.Errorf("ai: read completion: %w", err)
+		}
+		if len(raw) > maxJSON-skipped {
+			return Reply{}, errors.New("ai: completion exceeds response limit")
+		}
+		return readCompletionJSON(raw)
+	}
+	return Reply{}, errors.New("ai: completion exceeds response limit")
+}
+
+func readCompletionJSON(raw []byte) (Reply, error) {
+	var response struct {
+		Model   string          `json:"model"`
+		Error   json.RawMessage `json:"error"`
+		Choices []struct {
+			Index   int `json:"index"`
+			Message struct {
+				Content string `json:"content"`
+				Refusal string `json:"refusal"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			PromptDetails    struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return Reply{}, fmt.Errorf("ai: decode completion: %w", err)
+	}
+	if len(response.Error) != 0 && string(response.Error) != "null" {
+		return Reply{}, errors.New("ai: provider returned a completion error")
+	}
+	for _, choice := range response.Choices {
+		if choice.Index != 0 {
+			continue
+		}
+		cached := max(0, min(response.Usage.PromptTokens, response.Usage.PromptDetails.CachedTokens))
+		reply := Reply{Model: response.Model, Truncated: choice.FinishReason == "length", Usage: Usage{
+			InputTokens: response.Usage.PromptTokens - cached, OutputTokens: response.Usage.CompletionTokens, CacheReadInputTokens: cached,
+		}}
+		if choice.FinishReason == "content_filter" {
+			return reply, &RefusalError{StopReason: "content_filter"}
+		}
+		if choice.Message.Refusal != "" {
+			return reply, &RefusalError{StopReason: "refusal"}
+		}
+		if choice.FinishReason == "" {
+			return Reply{}, fmt.Errorf("ai: completion ended without a completed reply: %w", io.ErrUnexpectedEOF)
+		}
+		reply.Text = choice.Message.Content
+		if strings.TrimSpace(reply.Text) == "" && !reply.Truncated {
+			return Reply{}, errors.New("ai: completion ended without a reply")
+		}
+		return reply, nil
+	}
+	return Reply{}, errors.New("ai: completion ended without a reply")
 }
 
 // ChatRequiresCompletionTokens recognizes a rejected token field that explicitly requests its replacement.

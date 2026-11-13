@@ -1,0 +1,6 @@
+{
+  "invalid": "Only complete UTF-8 text without NUL bytes can be saved.",
+  "required": "A file path, its last-read revision and replacement text are required.",
+  "too_large": "Text editing is limited to files and replacements of 1 MiB or less.",
+  "changed": "This file changed. Keep your draft and reload the file before saving again."
+}

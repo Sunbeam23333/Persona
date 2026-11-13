@@ -14,7 +14,7 @@ import (
 	"github.com/nwverse/persona/server/internal/rpc"
 )
 
-// fileEditHub serves the four routes over a real rpc pair whose node answers with answer.
+// fileEditHub serves the file-edit routes over a real rpc pair whose node answers with answer.
 func fileEditHub(t *testing.T, answer func(method string, params map[string]any) (any, error)) http.Handler {
 	t.Helper()
 	h := newTestHub(t)
@@ -38,6 +38,7 @@ func fileEditHub(t *testing.T, answer func(method string, params map[string]any)
 	for _, op := range []string{"rename", "move", "trash", "restore"} {
 		mux.HandleFunc("POST /api/v1/machines/{mid}/files/"+op, h.fileEdit(op))
 	}
+	mux.HandleFunc("POST /api/v1/machines/{mid}/files/text", h.withMachine(h.saveFileText))
 	return mux
 }
 
